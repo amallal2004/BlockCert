@@ -243,3 +243,66 @@ export async function getRecordByHash(hash: string): Promise<StudentRecord | und
 
 // No-op for backward compat — DB is always initialized
 export function initializeDatabase(): void {}
+
+/** Sync blockchain events into DB — fills in missing student_records and app_users */
+export async function syncFromBlockchain(onChainRecords: {
+  hash: string;
+  rollNumber: string;
+  studentName: string;
+  department: string;
+  timestamp: number;
+  blockNumber: number;
+}[]): Promise<{ syncedRecords: number; syncedUsers: number }> {
+  let syncedRecords = 0;
+  let syncedUsers = 0;
+
+  for (const entry of onChainRecords) {
+    // Check if record already in DB by roll_number
+    const { data: existing } = await supabase
+      .from("student_records")
+      .select("id")
+      .eq("roll_number", entry.rollNumber)
+      .maybeSingle();
+
+    if (!existing) {
+      // Insert a minimal record — we don't have academicYear/marks/dates from chain
+      const { error } = await supabase.from("student_records").insert({
+        student_name: entry.studentName,
+        roll_number: entry.rollNumber,
+        department: entry.department,
+        academic_year: "N/A (synced from blockchain)",
+        date_of_joining: new Date(entry.timestamp).toISOString().split("T")[0],
+        date_of_completion: new Date(entry.timestamp).toISOString().split("T")[0],
+        total_marks: 0,
+        certificate_hash: entry.hash,
+        blockchain_tx_hash: "",
+        qr_code_data: "",
+        status: "registered",
+      });
+      if (!error) syncedRecords++;
+    }
+
+    // Ensure student user account exists
+    const username = entry.rollNumber.toLowerCase();
+    const { data: existingUser } = await supabase
+      .from("app_users")
+      .select("id")
+      .eq("username", username)
+      .maybeSingle();
+
+    if (!existingUser) {
+      const password = generatePassword();
+      const hashed = await hashPassword(password);
+      const { error } = await supabase.from("app_users").insert({
+        username,
+        password_hash: hashed,
+        role: "student",
+        name: entry.studentName,
+        roll_number: entry.rollNumber,
+      });
+      if (!error) syncedUsers++;
+    }
+  }
+
+  return { syncedRecords, syncedUsers };
+}
