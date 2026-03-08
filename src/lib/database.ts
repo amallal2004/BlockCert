@@ -1,6 +1,15 @@
 import { supabase } from "@/integrations/supabase/client";
 import { StudentRecord, User } from "./types";
 
+// --- Password Hashing ---
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 // --- Department Management ---
 
 export async function getDepartments(): Promise<string[]> {
@@ -43,11 +52,12 @@ export async function isDepartmentInUse(name: string): Promise<boolean> {
 // --- User Management ---
 
 export async function authenticateUser(username: string, password: string): Promise<User | null> {
+  const hashedPassword = await hashPassword(password);
   const { data, error } = await supabase
     .from("app_users")
     .select("*")
     .ilike("username", username)
-    .eq("password_hash", password)
+    .eq("password_hash", hashedPassword)
     .maybeSingle();
   if (error || !data) return null;
   return {
@@ -85,9 +95,10 @@ function generatePassword(length = 8): string {
 
 export async function resetStudentPassword(userId: string): Promise<string> {
   const newPassword = generatePassword();
+  const hashedPassword = await hashPassword(newPassword);
   const { error } = await supabase
     .from("app_users")
-    .update({ password_hash: newPassword })
+    .update({ password_hash: hashedPassword })
     .eq("id", userId)
     .eq("role", "student");
   if (error) throw new Error("Failed to reset password");
@@ -113,11 +124,12 @@ export async function addStudentUser(name: string, rollNumber: string): Promise<
     };
   }
   const defaultPassword = generatePassword();
+  const hashedDefaultPassword = await hashPassword(defaultPassword);
   const { data, error } = await supabase
     .from("app_users")
     .insert({
       username,
-      password_hash: defaultPassword,
+      password_hash: hashedDefaultPassword,
       role: "student",
       name,
       roll_number: rollNumber,
