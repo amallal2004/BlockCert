@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Shield, GraduationCap, ArrowLeft, LogIn } from "lucide-react";
+import { Shield, GraduationCap, ArrowLeft, LogIn, Hexagon } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import ParticleField from "@/components/ParticleField";
 
 const Login = () => {
   const [searchParams] = useSearchParams();
@@ -22,51 +22,83 @@ const Login = () => {
     e.preventDefault();
     const success = login(username, password);
     if (success) {
-      toast({ title: "Login successful", description: `Welcome back!` });
+      toast({ title: "Access Granted", description: "Authenticated successfully." });
       navigate(role === "admin" ? "/admin" : "/student");
     } else {
-      toast({ title: "Login failed", description: "Invalid credentials. Try admin/admin or student1/student1", variant: "destructive" });
+      toast({ title: "Access Denied", description: "Invalid credentials. Try admin/admin or student1/student1", variant: "destructive" });
     }
   };
 
   const isAdmin = role === "admin";
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
-        <Card className="w-full max-w-md shadow-xl border-2">
-          <CardHeader className="text-center pb-2">
-            <div className={`mx-auto mb-4 h-16 w-16 rounded-2xl flex items-center justify-center ${isAdmin ? "gradient-primary" : "gradient-success"}`}>
-              {isAdmin ? <Shield className="h-8 w-8 text-primary-foreground" /> : <GraduationCap className="h-8 w-8 text-primary-foreground" />}
+    <div className="min-h-screen flex items-center justify-center bg-background cyber-grid relative p-4">
+      <ParticleField />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-neon-cyan/5 blur-[120px] pointer-events-none" />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="relative z-10 w-full max-w-md"
+      >
+        <div className={`glass-card rounded-2xl p-8 ${isAdmin ? "neon-border-cyan" : "neon-border-purple"}`}>
+          <div className="text-center mb-8">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", delay: 0.2 }}
+              className={`mx-auto mb-5 h-20 w-20 rounded-2xl flex items-center justify-center ${isAdmin ? "btn-neon-cyan" : "btn-neon-purple"} neon-pulse`}
+            >
+              {isAdmin ? <Shield className="h-10 w-10" /> : <GraduationCap className="h-10 w-10" />}
+            </motion.div>
+            <h1 className="font-display text-2xl font-bold tracking-wider mb-2">
+              {isAdmin ? "ADMIN ACCESS" : "STUDENT ACCESS"}
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              {isAdmin ? "University administrator portal" : "View your certificate & QR code"}
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="username" className="font-display text-xs tracking-wider text-muted-foreground">USERNAME</Label>
+              <Input
+                id="username"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                placeholder={isAdmin ? "admin" : "student1"}
+                required
+                className="bg-muted/30 border-border/50 h-12 font-mono text-sm focus:border-primary focus:ring-primary/20"
+              />
             </div>
-            <CardTitle className="font-display text-2xl">{isAdmin ? "Admin Login" : "Student Login"}</CardTitle>
-            <CardDescription>
-              {isAdmin ? "University administrator access" : "View your certificate & QR code"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
-                <Input id="username" value={username} onChange={e => setUsername(e.target.value)} placeholder={isAdmin ? "admin" : "student1"} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Same as username (demo)" required />
-              </div>
-              <Button type="submit" className="w-full gradient-primary text-primary-foreground border-0 h-11">
-                <LogIn className="mr-2 h-4 w-4" />
-                Sign In
-              </Button>
-            </form>
-            <div className="mt-4 p-3 rounded-lg bg-muted text-xs text-muted-foreground">
-              <strong>Demo:</strong> {isAdmin ? "username: admin, password: admin" : "username: student1, password: student1"}
+            <div className="space-y-2">
+              <Label htmlFor="password" className="font-display text-xs tracking-wider text-muted-foreground">PASSWORD</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="bg-muted/30 border-border/50 h-12 font-mono text-sm focus:border-primary focus:ring-primary/20"
+              />
             </div>
-            <Button variant="ghost" asChild className="w-full mt-4">
-              <Link to="/"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Home</Link>
+            <Button type="submit" className={`w-full h-12 border-0 font-display tracking-wider text-sm rounded-xl ${isAdmin ? "btn-neon-cyan" : "btn-neon-purple"}`}>
+              <LogIn className="mr-2 h-4 w-4" />
+              AUTHENTICATE
             </Button>
-          </CardContent>
-        </Card>
+          </form>
+
+          <div className="mt-5 p-3 rounded-xl bg-muted/20 border border-border/30 text-xs text-muted-foreground font-mono">
+            <Hexagon className="h-3 w-3 inline mr-1 text-neon-cyan" />
+            Demo: {isAdmin ? "admin / admin" : "student1 / student1"}
+          </div>
+
+          <Button variant="ghost" asChild className="w-full mt-4 text-muted-foreground hover:text-foreground">
+            <Link to="/"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Home</Link>
+          </Button>
+        </div>
       </motion.div>
     </div>
   );
