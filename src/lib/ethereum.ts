@@ -7,11 +7,11 @@ const SEPOLIA_CHAIN_ID = "0xaa36a7"; // 11155111
 const SEPOLIA_RPC = "https://rpc.sepolia.org";
 
 const CONTRACT_ABI = [
-  "function registerCertificate(bytes32 _hash, string calldata _rollNumber) external",
-  "function verifyCertificate(bytes32 _hash) external view returns (bool exists, string rollNumber, uint256 timestamp, uint256 blockNum)",
+  "function registerCertificate(bytes32 _hash, string calldata _rollNumber, string calldata _studentName, string calldata _department) external",
+  "function verifyCertificate(bytes32 _hash) external view returns (bool exists, string rollNumber, string studentName, string department, uint256 timestamp, uint256 blockNum)",
   "function totalCertificates() external view returns (uint256)",
   "function owner() external view returns (address)",
-  "event CertificateRegistered(bytes32 indexed hash, string rollNumber, uint256 timestamp, uint256 blockNumber)",
+  "event CertificateRegistered(bytes32 indexed hash, string rollNumber, string studentName, string department, uint256 timestamp, uint256 blockNumber)",
 ];
 
 function getWindow(): any {
@@ -68,7 +68,9 @@ export async function connectWallet(): Promise<{ address: string; provider: Brow
 
 export async function registerCertificateOnChain(
   hash: string,
-  rollNumber: string
+  rollNumber: string,
+  studentName: string,
+  department: string
 ): Promise<{ txHash: string; blockNumber: number }> {
   const { provider } = await connectWallet();
   const signer = await provider.getSigner();
@@ -79,7 +81,7 @@ export async function registerCertificateOnChain(
     ? "0x" + hash.substring(0, 64) // Take first 32 bytes of SHA-512 for bytes32
     : "0x" + hash;
 
-  const tx = await contract.registerCertificate(bytes32Hash, rollNumber);
+  const tx = await contract.registerCertificate(bytes32Hash, rollNumber, studentName, department);
   const receipt = await tx.wait();
 
   return {
@@ -91,6 +93,8 @@ export async function registerCertificateOnChain(
 export async function verifyCertificateOnChain(hash: string): Promise<{
   exists: boolean;
   rollNumber?: string;
+  studentName?: string;
+  department?: string;
   timestamp?: number;
   blockNumber?: number;
 }> {
@@ -103,11 +107,13 @@ export async function verifyCertificateOnChain(hash: string): Promise<{
     : "0x" + hash;
 
   try {
-    const [exists, rollNumber, timestamp, blockNum] = await contract.verifyCertificate(bytes32Hash);
+    const [exists, rollNumber, studentName, department, timestamp, blockNum] = await contract.verifyCertificate(bytes32Hash);
     if (!exists) return { exists: false };
     return {
       exists: true,
       rollNumber,
+      studentName,
+      department,
       timestamp: Number(timestamp),
       blockNumber: Number(blockNum),
     };
