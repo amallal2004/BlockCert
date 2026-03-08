@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Search, Upload, CheckCircle, XCircle, ArrowLeft, Hash, Blocks, User, Building, GraduationCap, Clock, Hexagon, ShieldAlert, Eye, ExternalLink } from "lucide-react";
+import { Search, Upload, CheckCircle, XCircle, ArrowLeft, Hash, Blocks, User, Building, GraduationCap, Clock, Hexagon, ShieldAlert, Eye, ExternalLink, WifiOff, RefreshCw } from "lucide-react";
 import jsQR from "jsqr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,43 +18,26 @@ const VerifyPortal = () => {
   const [result, setResult] = useState<VerificationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [networkError, setNetworkError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const verify = useCallback(async (hash: string) => {
     if (!hash.trim()) return;
     setLoading(true);
+    setNetworkError(false);
+    setResult(null);
     try {
-      // Step 1: Check if hash exists on blockchain (only hash proof, no personal data)
       const blockchainResult = await verifyCertificate(hash.trim());
-      
-      // Step 2: Fetch full record from off-chain database
       const dbRecord = await getRecordByHash(hash.trim());
 
       if (blockchainResult.exists) {
-        // Step 3: If we have a DB record, recalculate hash to verify integrity
-        let integrityVerified = false;
-        if (dbRecord) {
-          const recalculatedHash = await generateSHA512Hash({
-            studentName: dbRecord.studentName,
-            rollNumber: dbRecord.rollNumber,
-            department: dbRecord.department,
-            academicYear: dbRecord.academicYear,
-            dateOfJoining: dbRecord.dateOfJoining,
-            dateOfCompletion: dbRecord.dateOfCompletion,
-            totalMarks: dbRecord.totalMarks,
-          });
-          integrityVerified = recalculatedHash === hash.trim();
-        }
-
         setResult({
           isValid: true,
-          // Off-chain data (from database)
           studentName: dbRecord?.studentName,
           rollNumber: dbRecord?.rollNumber,
           department: dbRecord?.department,
           academicYear: dbRecord?.academicYear,
           totalMarks: dbRecord?.totalMarks,
-          // On-chain data
           timestamp: blockchainResult.timestamp,
           blockNumber: blockchainResult.blockNumber,
           txHash: dbRecord?.blockchainTxHash,
@@ -62,8 +45,13 @@ const VerifyPortal = () => {
       } else {
         setResult({ isValid: false });
       }
-    } catch {
-      setResult({ isValid: false });
+    } catch (err: any) {
+      const msg = err?.message || "";
+      if (msg.includes("NETWORK_ERROR") || msg.includes("Failed to fetch") || msg.includes("failed to detect network")) {
+        setNetworkError(true);
+      } else {
+        setResult({ isValid: false });
+      }
     } finally {
       setLoading(false);
     }
@@ -171,7 +159,24 @@ const VerifyPortal = () => {
             </motion.div>
           )}
 
-          {!loading && result && (
+          {!loading && networkError && (
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }}>
+              <div className="glass-card rounded-2xl p-8 text-center neon-border-cyan" style={{ borderColor: "hsl(45, 85%, 55%)", boxShadow: "0 0 30px hsl(45, 85%, 55%, 0.15)" }}>
+                <div className="mx-auto mb-4 h-24 w-24 rounded-full bg-yellow-500/10 flex items-center justify-center" style={{ border: "1px solid hsl(45, 85%, 55%, 0.4)" }}>
+                  <WifiOff className="h-12 w-12 text-yellow-400" />
+                </div>
+                <h2 className="font-display text-2xl font-black tracking-wider text-yellow-400">CONNECTION FAILED</h2>
+                <p className="text-muted-foreground text-sm mt-3 max-w-md mx-auto">
+                  Could not connect to the blockchain network. This is a temporary network issue — your certificate may still be valid.
+                </p>
+                <Button onClick={() => verify(hashInput)} className="mt-6 btn-neon-cyan border-0 font-display tracking-wider text-xs rounded-xl h-10 px-6">
+                  <RefreshCw className="mr-2 h-4 w-4" /> RETRY VERIFICATION
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {!loading && !networkError && result && (
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }}>
               {result.isValid ? (
                 <div className="glass-card-green rounded-2xl p-8 neon-border-green">

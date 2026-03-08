@@ -4,7 +4,27 @@ import { BrowserProvider, Contract, JsonRpcProvider } from "ethers";
 const CONTRACT_ADDRESS = "0x9bBA5d5a15A74a3a871A63Bbfc2470E548859635";
 
 const SEPOLIA_CHAIN_ID = "0xaa36a7"; // 11155111
-const SEPOLIA_RPC = "https://rpc.sepolia.org";
+
+// Multiple fallback RPCs for reliability
+const SEPOLIA_RPCS = [
+  "https://ethereum-sepolia-rpc.publicnode.com",
+  "https://rpc.sepolia.org",
+  "https://sepolia.drpc.org",
+  "https://rpc2.sepolia.org",
+];
+
+async function getReadProvider(): Promise<JsonRpcProvider> {
+  for (const rpcUrl of SEPOLIA_RPCS) {
+    try {
+      const provider = new JsonRpcProvider(rpcUrl);
+      await provider.getBlockNumber(); // test connection
+      return provider;
+    } catch {
+      console.warn(`RPC failed: ${rpcUrl}`);
+    }
+  }
+  throw new Error("NETWORK_ERROR: All Sepolia RPC endpoints failed. Please try again later.");
+}
 
 // Updated ABI — hash-only, no personal info on-chain
 const CONTRACT_ABI = [
@@ -99,42 +119,34 @@ export async function verifyCertificateOnChain(hash: string): Promise<{
   timestamp?: number;
   blockNumber?: number;
 }> {
-  const provider = new JsonRpcProvider(SEPOLIA_RPC);
+  const provider = await getReadProvider();
   const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
 
   const bytes32Hash = hash.length === 128
     ? "0x" + hash.substring(0, 64)
     : "0x" + hash;
 
-  try {
-    const [exists, timestamp, blockNum] = await contract.verifyCertificate(bytes32Hash);
-    if (!exists) return { exists: false };
-    return {
-      exists: true,
-      timestamp: Number(timestamp),
-      blockNumber: Number(blockNum),
-    };
-  } catch {
-    return { exists: false };
-  }
+  const [exists, timestamp, blockNum] = await contract.verifyCertificate(bytes32Hash);
+  if (!exists) return { exists: false };
+  return {
+    exists: true,
+    timestamp: Number(timestamp),
+    blockNumber: Number(blockNum),
+  };
 }
 
 export async function getOnChainStats(): Promise<{
   totalCertificates: number;
   owner: string;
 }> {
-  const provider = new JsonRpcProvider(SEPOLIA_RPC);
+  const provider = await getReadProvider();
   const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
 
-  try {
-    const [total, owner] = await Promise.all([
-      contract.totalCertificates(),
-      contract.owner(),
-    ]);
-    return { totalCertificates: Number(total), owner };
-  } catch {
-    return { totalCertificates: 0, owner: "" };
-  }
+  const [total, owner] = await Promise.all([
+    contract.totalCertificates(),
+    contract.owner(),
+  ]);
+  return { totalCertificates: Number(total), owner };
 }
 
 export function getEtherscanTxUrl(txHash: string): string {
