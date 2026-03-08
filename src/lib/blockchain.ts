@@ -30,7 +30,7 @@ export async function addCertificate(
   const fullEntry: BlockchainEntry = {
     ...entry,
     txHash: result.txHash,
-    issuerAddress: result.issuerAddress || "",
+    issuerAddress: "",
     blockNumber: result.blockNumber,
   };
 

@@ -1,17 +1,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Plus, List, ShieldCheck, LogOut, Activity, Blocks, Hash, Clock, Hexagon, Zap, Building, Users, Wallet, ExternalLink } from "lucide-react";
+import { Plus, List, LogOut, Activity, Blocks, Hash, Clock, Hexagon, Zap, Building, Users, Wallet, ExternalLink } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { getRecords } from "@/lib/database";
-import { getBlockchainStats, verifyChainIntegrity } from "@/lib/blockchain";
+import { getBlockchainStats } from "@/lib/blockchain";
 import { useToast } from "@/hooks/use-toast";
 import AddRecordForm from "@/components/AddRecordForm";
 import RecordsTable from "@/components/RecordsTable";
 import DepartmentManager from "@/components/DepartmentManager";
 import StudentManager from "@/components/StudentManager";
-import { connectWallet, isMetaMaskInstalled, isContractConfigured, getEtherscanAddressUrl, getContractAddress } from "@/lib/ethereum";
+import { connectWallet, isMetaMaskInstalled, getEtherscanAddressUrl, getContractAddress } from "@/lib/ethereum";
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
@@ -20,8 +20,15 @@ const AdminDashboard = () => {
   const [view, setView] = useState<"dashboard" | "add" | "records" | "departments" | "students">("dashboard");
   const [records, setRecords] = useState(getRecords());
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const stats = getBlockchainStats();
-  const useRealBlockchain = isContractConfigured() && isMetaMaskInstalled();
+  const [onChainTotal, setOnChainTotal] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!user || user.role !== "admin") navigate("/login?role=admin");
+  }, [user, navigate]);
+
+  useEffect(() => {
+    getBlockchainStats().then(s => setOnChainTotal(s.totalCertificates)).catch(() => {});
+  }, [records]);
 
   const handleConnectWallet = async () => {
     try {
@@ -31,19 +38,6 @@ const AdminDashboard = () => {
     } catch (err: any) {
       toast({ title: "Wallet Error", description: err.message, variant: "destructive" });
     }
-  };
-
-  useEffect(() => {
-    if (!user || user.role !== "admin") navigate("/login?role=admin");
-  }, [user, navigate]);
-
-  const handleVerifyChain = () => {
-    const result = verifyChainIntegrity();
-    toast({
-      title: result.isValid ? "✅ Chain Verified" : "❌ Chain Compromised",
-      description: result.message,
-      variant: result.isValid ? "default" : "destructive",
-    });
   };
 
   const refreshRecords = () => setRecords(getRecords());
@@ -68,7 +62,7 @@ const AdminDashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {useRealBlockchain && (
+            {isMetaMaskInstalled() ? (
               walletAddress ? (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neon-green/10 border border-neon-green/20 text-xs">
                   <Wallet className="h-3 w-3 text-neon-green" />
@@ -79,6 +73,11 @@ const AdminDashboard = () => {
                   <Wallet className="mr-2 h-4 w-4" /> CONNECT WALLET
                 </Button>
               )
+            ) : (
+              <a href="https://metamask.io" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/20 border border-border/20 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                <Wallet className="h-3 w-3" /> Install MetaMask
+                <ExternalLink className="h-3 w-3" />
+              </a>
             )}
             <Button variant="ghost" size="sm" onClick={() => { logout(); navigate("/"); }} className="text-muted-foreground hover:text-foreground font-display text-xs tracking-wider">
               <LogOut className="mr-2 h-4 w-4" /> LOGOUT
@@ -91,9 +90,9 @@ const AdminDashboard = () => {
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           {[
-            { label: "CERTIFICATES", value: stats.totalCertificates, icon: Hash, glassClass: "glass-card", borderClass: "neon-border-cyan", iconColor: "text-neon-cyan" },
-            { label: "BLOCKS", value: stats.totalBlocks, icon: Blocks, glassClass: "glass-card-purple", borderClass: "neon-border-purple", iconColor: "text-neon-purple" },
-            { label: "LAST ACTIVITY", value: stats.lastBlockTimestamp ? new Date(stats.lastBlockTimestamp).toLocaleDateString() : "N/A", icon: Clock, glassClass: "glass-card-green", borderClass: "neon-border-green", iconColor: "text-neon-green" },
+            { label: "ON-CHAIN CERTS", value: onChainTotal !== null ? onChainTotal : "...", icon: Hash, glassClass: "glass-card", borderClass: "neon-border-cyan", iconColor: "text-neon-cyan" },
+            { label: "LOCAL RECORDS", value: records.length, icon: Blocks, glassClass: "glass-card-purple", borderClass: "neon-border-purple", iconColor: "text-neon-purple" },
+            { label: "NETWORK", value: "Sepolia", icon: Clock, glassClass: "glass-card-green", borderClass: "neon-border-green", iconColor: "text-neon-green" },
           ].map((s, i) => (
             <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
               <div className={`${s.glassClass} rounded-2xl p-6`}>
@@ -112,13 +111,12 @@ const AdminDashboard = () => {
         </div>
 
         {/* Actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
             { icon: Plus, title: "ADD RECORD", desc: "Register a certificate", onClick: () => setView("add"), glassClass: "glass-card", iconColor: "text-neon-cyan", borderClass: "neon-border-cyan" },
             { icon: List, title: "VIEW RECORDS", desc: `${records.length} registered`, onClick: () => setView("records"), glassClass: "glass-card-purple", iconColor: "text-neon-purple", borderClass: "neon-border-purple" },
             { icon: Building, title: "DEPARTMENTS", desc: "Manage departments", onClick: () => setView("departments"), glassClass: "glass-card", iconColor: "text-neon-pink", borderClass: "neon-border-cyan" },
             { icon: Users, title: "STUDENTS", desc: "Manage credentials", onClick: () => setView("students"), glassClass: "glass-card-purple", iconColor: "text-neon-blue", borderClass: "neon-border-purple" },
-            { icon: ShieldCheck, title: "VERIFY CHAIN", desc: "Integrity check", onClick: handleVerifyChain, glassClass: "glass-card-green", iconColor: "text-neon-green", borderClass: "neon-border-green" },
           ].map((item, i) => (
             <motion.div
               key={i}
@@ -135,6 +133,19 @@ const AdminDashboard = () => {
               <p className="text-sm text-muted-foreground">{item.desc}</p>
             </motion.div>
           ))}
+        </div>
+
+        {/* Contract Info */}
+        <div className="glass-card rounded-2xl p-4 mb-8 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <Blocks className="h-4 w-4 text-neon-cyan" />
+            <span className="font-display tracking-wider text-muted-foreground">CONTRACT:</span>
+            <span className="font-mono text-neon-cyan">{getContractAddress().slice(0, 10)}...{getContractAddress().slice(-8)}</span>
+          </div>
+          <a href={getEtherscanAddressUrl(getContractAddress())} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1 text-neon-cyan hover:underline">
+            <ExternalLink className="h-3 w-3" /> View on Etherscan
+          </a>
         </div>
 
         {/* Recent Activity */}
