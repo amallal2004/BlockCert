@@ -1,4 +1,3 @@
-import { BlockchainEntry } from "./types";
 import { registerCertificateOnChain, verifyCertificateOnChain, getOnChainStats, isMetaMaskInstalled } from "./ethereum";
 
 /**
