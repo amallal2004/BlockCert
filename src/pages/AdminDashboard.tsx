@@ -12,19 +12,24 @@ import RecordsTable from "@/components/RecordsTable";
 import DepartmentManager from "@/components/DepartmentManager";
 import StudentManager from "@/components/StudentManager";
 import { connectWallet, isMetaMaskInstalled, getEtherscanAddressUrl, getContractAddress } from "@/lib/ethereum";
+import { StudentRecord } from "@/lib/types";
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [view, setView] = useState<"dashboard" | "add" | "records" | "departments" | "students">("dashboard");
-  const [records, setRecords] = useState(getRecords());
+  const [records, setRecords] = useState<StudentRecord[]>([]);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [onChainTotal, setOnChainTotal] = useState<number | null>(null);
 
   useEffect(() => {
     if (!user || user.role !== "admin") navigate("/login?role=admin");
   }, [user, navigate]);
+
+  useEffect(() => {
+    getRecords().then(setRecords);
+  }, []);
 
   useEffect(() => {
     getBlockchainStats().then(s => setOnChainTotal(s.totalCertificates)).catch(() => {});
@@ -40,7 +45,7 @@ const AdminDashboard = () => {
     }
   };
 
-  const refreshRecords = () => setRecords(getRecords());
+  const refreshRecords = () => { getRecords().then(setRecords); };
 
   if (view === "add") return <AddRecordForm onBack={() => { setView("dashboard"); refreshRecords(); }} />;
   if (view === "records") return <RecordsTable records={records} onBack={() => setView("dashboard")} />;
@@ -49,7 +54,6 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-background cyber-grid">
-      {/* Header */}
       <header className="border-b border-border/50 glass-card rounded-none">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -87,11 +91,10 @@ const AdminDashboard = () => {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           {[
             { label: "ON-CHAIN CERTS", value: onChainTotal !== null ? onChainTotal : "...", icon: Hash, glassClass: "glass-card", borderClass: "neon-border-cyan", iconColor: "text-neon-cyan" },
-            { label: "LOCAL RECORDS", value: records.length, icon: Blocks, glassClass: "glass-card-purple", borderClass: "neon-border-purple", iconColor: "text-neon-purple" },
+            { label: "DB RECORDS", value: records.length, icon: Blocks, glassClass: "glass-card-purple", borderClass: "neon-border-purple", iconColor: "text-neon-purple" },
             { label: "NETWORK", value: "Sepolia", icon: Clock, glassClass: "glass-card-green", borderClass: "neon-border-green", iconColor: "text-neon-green" },
           ].map((s, i) => (
             <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
@@ -110,7 +113,6 @@ const AdminDashboard = () => {
           ))}
         </div>
 
-        {/* Actions */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
             { icon: Plus, title: "ADD RECORD", desc: "Register a certificate", onClick: () => setView("add"), glassClass: "glass-card", iconColor: "text-neon-cyan", borderClass: "neon-border-cyan" },
@@ -135,7 +137,6 @@ const AdminDashboard = () => {
           ))}
         </div>
 
-        {/* Contract Info */}
         <div className="glass-card rounded-2xl p-4 mb-8 flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
             <Blocks className="h-4 w-4 text-neon-cyan" />
@@ -148,7 +149,6 @@ const AdminDashboard = () => {
           </a>
         </div>
 
-        {/* Recent Activity */}
         <div className="glass-card rounded-2xl overflow-hidden">
           <div className="p-6 border-b border-border/30 flex items-center gap-2">
             <Activity className="h-5 w-5 text-neon-cyan" />
@@ -162,7 +162,7 @@ const AdminDashboard = () => {
               </div>
             ) : (
               <div className="space-y-3">
-                {records.slice(-5).reverse().map(r => (
+                {records.slice(0, 5).map(r => (
                   <div key={r.id} className="flex items-center justify-between p-4 rounded-xl bg-muted/20 border border-border/20 hover:border-primary/20 transition-colors">
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded-lg bg-neon-cyan/10 flex items-center justify-center">

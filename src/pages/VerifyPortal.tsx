@@ -24,7 +24,7 @@ const VerifyPortal = () => {
     setLoading(true);
     try {
       const blockchainResult = await verifyCertificate(hash.trim());
-      const dbRecord = getRecordByHash(hash.trim());
+      const dbRecord = await getRecordByHash(hash.trim());
       if (blockchainResult.exists && blockchainResult.entry) {
         setResult({
           isValid: true, studentName: blockchainResult.entry.studentName, rollNumber: blockchainResult.entry.rollNumber,
@@ -98,7 +98,6 @@ const VerifyPortal = () => {
 
       <main className="container mx-auto px-4 py-8 max-w-2xl relative z-10">
         <div className="space-y-6">
-          {/* QR Upload */}
           <div className="glass-card rounded-2xl p-6 neon-border-cyan">
             <div className="flex items-center gap-2 mb-4">
               <Upload className="h-4 w-4 text-neon-cyan" />
@@ -118,7 +117,6 @@ const VerifyPortal = () => {
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
           </div>
 
-          {/* Manual Hash */}
           <div className="glass-card-purple rounded-2xl p-6 neon-border-purple">
             <div className="flex items-center gap-2 mb-4">
               <Hash className="h-4 w-4 text-neon-purple" />
@@ -138,7 +136,6 @@ const VerifyPortal = () => {
             </div>
           </div>
 
-          {/* Loading */}
           {loading && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card rounded-2xl p-12 text-center neon-border-cyan neon-pulse">
               <div className="h-12 w-12 mx-auto mb-4 border-2 border-neon-cyan border-t-transparent rounded-full animate-spin" />
@@ -147,7 +144,6 @@ const VerifyPortal = () => {
             </motion.div>
           )}
 
-          {/* Result */}
           {!loading && result && (
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }}>
               {result.isValid ? (

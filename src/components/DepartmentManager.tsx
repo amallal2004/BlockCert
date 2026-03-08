@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Plus, Trash2, Building, Lock, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,26 +12,35 @@ interface Props {
 
 const DepartmentManager = ({ onBack }: Props) => {
   const { toast } = useToast();
-  const [departments, setDepartments] = useState(getDepartments());
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [deptUsage, setDeptUsage] = useState<Record<string, boolean>>({});
   const [newDept, setNewDept] = useState("");
 
-  const refresh = () => setDepartments(getDepartments());
+  const refresh = async () => {
+    const depts = await getDepartments();
+    setDepartments(depts);
+    const usage: Record<string, boolean> = {};
+    await Promise.all(depts.map(async d => { usage[d] = await isDepartmentInUse(d); }));
+    setDeptUsage(usage);
+  };
 
-  const handleAdd = () => {
+  useEffect(() => { refresh(); }, []);
+
+  const handleAdd = async () => {
     try {
-      addDepartment(newDept);
+      await addDepartment(newDept);
       setNewDept("");
-      refresh();
+      await refresh();
       toast({ title: "✅ Department Added", description: `${newDept.trim()} added successfully.` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
   };
 
-  const handleRemove = (name: string) => {
+  const handleRemove = async (name: string) => {
     try {
-      removeDepartment(name);
-      refresh();
+      await removeDepartment(name);
+      await refresh();
       toast({ title: "🗑️ Department Removed", description: `${name} removed.` });
     } catch (err: any) {
       toast({ title: "Cannot Remove", description: err.message, variant: "destructive" });
@@ -56,7 +65,6 @@ const DepartmentManager = ({ onBack }: Props) => {
             </div>
           </div>
 
-          {/* Add new */}
           <div className="flex gap-3 mb-6">
             <Input
               value={newDept}
@@ -70,10 +78,9 @@ const DepartmentManager = ({ onBack }: Props) => {
             </Button>
           </div>
 
-          {/* List */}
           <div className="space-y-2">
             {departments.map((dept, i) => {
-              const inUse = isDepartmentInUse(dept);
+              const inUse = deptUsage[dept] || false;
               return (
                 <motion.div
                   key={dept}

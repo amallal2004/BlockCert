@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Users, Eye, EyeOff, RotateCcw, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getStudentUsers, resetStudentPassword, getRecords } from "@/lib/database";
+import { getStudentUsers, resetStudentPassword } from "@/lib/database";
 import { useToast } from "@/hooks/use-toast";
+import { User } from "@/lib/types";
 
 interface Props {
   onBack: () => void;
@@ -11,19 +12,20 @@ interface Props {
 
 const StudentManager = ({ onBack }: Props) => {
   const { toast } = useToast();
-  // Only show students that have a corresponding record (i.e., successfully registered on-chain)
-  const getValidStudents = () => {
-    const records = getRecords();
-    const registeredRolls = new Set(records.map(r => r.rollNumber.toLowerCase()));
-    return getStudentUsers().filter(s => s.rollNumber && registeredRolls.has(s.rollNumber.toLowerCase()));
-  };
-  const [students, setStudents] = useState(getValidStudents());
+  const [students, setStudents] = useState<User[]>([]);
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
 
-  const handleReset = (userId: string) => {
+  const loadStudents = async () => {
+    const users = await getStudentUsers();
+    setStudents(users);
+  };
+
+  useEffect(() => { loadStudents(); }, []);
+
+  const handleReset = async (userId: string) => {
     try {
-      const newPwd = resetStudentPassword(userId);
-      setStudents(getValidStudents());
+      const newPwd = await resetStudentPassword(userId);
+      await loadStudents();
       toast({ title: "✅ Password Reset", description: `New password: ${newPwd}` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
