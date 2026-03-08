@@ -29,6 +29,41 @@ export function initializeDatabase(): void {
   if (!localStorage.getItem(RECORDS_KEY)) {
     localStorage.setItem(RECORDS_KEY, JSON.stringify([]));
   }
+  if (!localStorage.getItem(DEPARTMENTS_KEY)) {
+    localStorage.setItem(DEPARTMENTS_KEY, JSON.stringify(DEFAULT_DEPARTMENTS));
+  }
+}
+
+// --- Department Management ---
+
+export function getDepartments(): string[] {
+  const data = localStorage.getItem(DEPARTMENTS_KEY);
+  return data ? JSON.parse(data) : DEFAULT_DEPARTMENTS;
+}
+
+export function addDepartment(name: string): void {
+  const departments = getDepartments();
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Department name cannot be empty");
+  if (departments.some(d => d.toLowerCase() === trimmed.toLowerCase())) {
+    throw new Error("Department already exists");
+  }
+  departments.push(trimmed);
+  localStorage.setItem(DEPARTMENTS_KEY, JSON.stringify(departments));
+}
+
+export function removeDepartment(name: string): void {
+  const records = getRecords();
+  const hasRecords = records.some(r => r.department === name);
+  if (hasRecords) {
+    throw new Error("Cannot remove department — students are registered on the blockchain with this department");
+  }
+  const departments = getDepartments().filter(d => d !== name);
+  localStorage.setItem(DEPARTMENTS_KEY, JSON.stringify(departments));
+}
+
+export function isDepartmentInUse(name: string): boolean {
+  return getRecords().some(r => r.department === name);
 }
 
 export function getUsers(): User[] {
