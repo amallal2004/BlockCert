@@ -27,6 +27,7 @@ export async function verifyCertificate(hash: string): Promise<{
   timestamp?: number;
   blockNumber?: number;
 }> {
+  // Let errors propagate so UI can distinguish network errors from "not found"
   const onChain = await verifyCertificateOnChain(hash);
   if (!onChain.exists) return { exists: false };
 
