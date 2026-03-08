@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Plus, List, ShieldCheck, LogOut, Activity, Blocks, Hash, Clock, Hexagon, Zap, Building, Users } from "lucide-react";
+import { Plus, List, ShieldCheck, LogOut, Activity, Blocks, Hash, Clock, Hexagon, Zap, Building, Users, Wallet, ExternalLink } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { getRecords } from "@/lib/database";
@@ -11,6 +11,7 @@ import AddRecordForm from "@/components/AddRecordForm";
 import RecordsTable from "@/components/RecordsTable";
 import DepartmentManager from "@/components/DepartmentManager";
 import StudentManager from "@/components/StudentManager";
+import { connectWallet, isMetaMaskInstalled, isContractConfigured, getEtherscanAddressUrl, getContractAddress } from "@/lib/ethereum";
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
@@ -18,7 +19,19 @@ const AdminDashboard = () => {
   const { toast } = useToast();
   const [view, setView] = useState<"dashboard" | "add" | "records" | "departments" | "students">("dashboard");
   const [records, setRecords] = useState(getRecords());
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const stats = getBlockchainStats();
+  const useRealBlockchain = isContractConfigured() && isMetaMaskInstalled();
+
+  const handleConnectWallet = async () => {
+    try {
+      const { address } = await connectWallet();
+      setWalletAddress(address);
+      toast({ title: "✅ Wallet Connected", description: `${address.slice(0, 6)}...${address.slice(-4)}` });
+    } catch (err: any) {
+      toast({ title: "Wallet Error", description: err.message, variant: "destructive" });
+    }
+  };
 
   useEffect(() => {
     if (!user || user.role !== "admin") navigate("/login?role=admin");
@@ -54,9 +67,23 @@ const AdminDashboard = () => {
               <p className="text-xs text-muted-foreground font-mono">{user?.name}</p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => { logout(); navigate("/"); }} className="text-muted-foreground hover:text-foreground font-display text-xs tracking-wider">
-            <LogOut className="mr-2 h-4 w-4" /> LOGOUT
-          </Button>
+          <div className="flex items-center gap-3">
+            {useRealBlockchain && (
+              walletAddress ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neon-green/10 border border-neon-green/20 text-xs">
+                  <Wallet className="h-3 w-3 text-neon-green" />
+                  <span className="font-mono text-neon-green">{walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}</span>
+                </div>
+              ) : (
+                <Button onClick={handleConnectWallet} size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground font-display text-xs tracking-wider">
+                  <Wallet className="mr-2 h-4 w-4" /> CONNECT WALLET
+                </Button>
+              )
+            )}
+            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate("/"); }} className="text-muted-foreground hover:text-foreground font-display text-xs tracking-wider">
+              <LogOut className="mr-2 h-4 w-4" /> LOGOUT
+            </Button>
+          </div>
         </div>
       </header>
 
