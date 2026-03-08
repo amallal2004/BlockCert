@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Search, Upload, CheckCircle, XCircle, ArrowLeft, Hash, Blocks, User, Building, GraduationCap, Clock, Hexagon, ShieldAlert, Eye } from "lucide-react";
+import { Search, Upload, CheckCircle, XCircle, ArrowLeft, Hash, Blocks, User, Building, GraduationCap, Clock, Hexagon, ShieldAlert, Eye, ExternalLink } from "lucide-react";
 import jsQR from "jsqr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { verifyCertificate } from "@/lib/blockchain";
 import { getRecordByHash } from "@/lib/database";
 import { VerificationResult } from "@/lib/types";
+import { getEtherscanTxUrl, isContractConfigured } from "@/lib/ethereum";
 import ParticleField from "@/components/ParticleField";
 
 const VerifyPortal = () => {
@@ -18,11 +19,11 @@ const VerifyPortal = () => {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const verify = useCallback((hash: string) => {
+  const verify = useCallback(async (hash: string) => {
     if (!hash.trim()) return;
     setLoading(true);
-    setTimeout(() => {
-      const blockchainResult = verifyCertificate(hash.trim());
+    try {
+      const blockchainResult = await verifyCertificate(hash.trim());
       const dbRecord = getRecordByHash(hash.trim());
       if (blockchainResult.exists && blockchainResult.entry) {
         setResult({
@@ -34,8 +35,11 @@ const VerifyPortal = () => {
       } else {
         setResult({ isValid: false });
       }
+    } catch {
+      setResult({ isValid: false });
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   }, []);
 
   useEffect(() => {
@@ -181,10 +185,16 @@ const VerifyPortal = () => {
                   </div>
 
                   <div className="space-y-2 p-4 rounded-xl bg-muted/20 border border-border/20 text-xs">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Blocks className="h-3 w-3 text-neon-purple" />
                       <span className="text-muted-foreground font-display tracking-wider">TX HASH:</span>
                       <span className="font-mono break-all">{result.txHash}</span>
+                      {isContractConfigured() && result.txHash && (
+                        <a href={getEtherscanTxUrl(result.txHash)} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-neon-cyan hover:underline ml-auto shrink-0">
+                          <ExternalLink className="h-3 w-3" /> Etherscan
+                        </a>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-muted-foreground font-display tracking-wider">BLOCK:</span>
