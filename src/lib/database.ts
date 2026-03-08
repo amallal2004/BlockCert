@@ -1,6 +1,18 @@
 import { StudentRecord, User } from "./types";
 
 const RECORDS_KEY = "student_records";
+const DEPARTMENTS_KEY = "departments";
+
+const DEFAULT_DEPARTMENTS = [
+  "Computer Science",
+  "Electronics",
+  "Mechanical",
+  "Civil",
+  "Electrical",
+  "Information Technology",
+  "Chemical",
+  "Biotechnology",
+];
 const USERS_KEY = "app_users";
 
 // Demo credentials
