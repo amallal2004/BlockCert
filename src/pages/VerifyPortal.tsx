@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { verifyCertificate } from "@/lib/blockchain";
 import { getRecordByHash } from "@/lib/database";
+import { generateSHA512Hash } from "@/lib/crypto";
 import { VerificationResult } from "@/lib/types";
 import { getEtherscanTxUrl, isContractConfigured } from "@/lib/ethereum";
 import ParticleField from "@/components/ParticleField";
@@ -23,14 +24,40 @@ const VerifyPortal = () => {
     if (!hash.trim()) return;
     setLoading(true);
     try {
+      // Step 1: Check if hash exists on blockchain (only hash proof, no personal data)
       const blockchainResult = await verifyCertificate(hash.trim());
+      
+      // Step 2: Fetch full record from off-chain database
       const dbRecord = await getRecordByHash(hash.trim());
-      if (blockchainResult.exists && blockchainResult.entry) {
+
+      if (blockchainResult.exists) {
+        // Step 3: If we have a DB record, recalculate hash to verify integrity
+        let integrityVerified = false;
+        if (dbRecord) {
+          const recalculatedHash = await generateSHA512Hash({
+            studentName: dbRecord.studentName,
+            rollNumber: dbRecord.rollNumber,
+            department: dbRecord.department,
+            academicYear: dbRecord.academicYear,
+            dateOfJoining: dbRecord.dateOfJoining,
+            dateOfCompletion: dbRecord.dateOfCompletion,
+            totalMarks: dbRecord.totalMarks,
+          });
+          integrityVerified = recalculatedHash === hash.trim();
+        }
+
         setResult({
-          isValid: true, studentName: blockchainResult.entry.studentName, rollNumber: blockchainResult.entry.rollNumber,
-          department: blockchainResult.entry.department, academicYear: dbRecord?.academicYear, totalMarks: dbRecord?.totalMarks,
-          timestamp: blockchainResult.entry.timestamp, issuerAddress: blockchainResult.entry.issuerAddress,
-          txHash: blockchainResult.entry.txHash, blockNumber: blockchainResult.entry.blockNumber,
+          isValid: true,
+          // Off-chain data (from database)
+          studentName: dbRecord?.studentName,
+          rollNumber: dbRecord?.rollNumber,
+          department: dbRecord?.department,
+          academicYear: dbRecord?.academicYear,
+          totalMarks: dbRecord?.totalMarks,
+          // On-chain data
+          timestamp: blockchainResult.timestamp,
+          blockNumber: blockchainResult.blockNumber,
+          txHash: dbRecord?.blockchainTxHash,
         });
       } else {
         setResult({ isValid: false });
@@ -158,15 +185,15 @@ const VerifyPortal = () => {
                       <CheckCircle className="h-12 w-12 text-neon-green" />
                     </motion.div>
                     <h2 className="font-display text-3xl font-black tracking-wider text-neon-green text-glow-green">AUTHENTIC</h2>
-                    <p className="text-muted-foreground text-sm mt-2">Certificate verified on blockchain</p>
+                    <p className="text-muted-foreground text-sm mt-2">Hash verified on blockchain · Details from secure database</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 text-sm mb-6">
                     {[
-                      { icon: User, label: "STUDENT", value: result.studentName },
-                      { icon: Hash, label: "ROLL NO", value: result.rollNumber },
-                      { icon: Building, label: "DEPT", value: result.department },
-                      { icon: GraduationCap, label: "YEAR", value: result.academicYear },
+                      { icon: User, label: "STUDENT", value: result.studentName || "N/A" },
+                      { icon: Hash, label: "ROLL NO", value: result.rollNumber || "N/A" },
+                      { icon: Building, label: "DEPT", value: result.department || "N/A" },
+                      { icon: GraduationCap, label: "YEAR", value: result.academicYear || "N/A" },
                       { icon: GraduationCap, label: "MARKS", value: result.totalMarks ? `${result.totalMarks}%` : "N/A" },
                       { icon: Clock, label: "REGISTERED", value: result.timestamp ? new Date(result.timestamp).toLocaleDateString() : "N/A" },
                     ].map((item, i) => (
@@ -184,7 +211,7 @@ const VerifyPortal = () => {
                     <div className="flex items-center gap-2 flex-wrap">
                       <Blocks className="h-3 w-3 text-neon-purple" />
                       <span className="text-muted-foreground font-display tracking-wider">TX HASH:</span>
-                      <span className="font-mono break-all">{result.txHash}</span>
+                      <span className="font-mono break-all">{result.txHash || "N/A"}</span>
                       {isContractConfigured() && result.txHash && (
                         <a href={getEtherscanTxUrl(result.txHash)} target="_blank" rel="noopener noreferrer"
                           className="flex items-center gap-1 text-neon-cyan hover:underline ml-auto shrink-0">
@@ -196,10 +223,10 @@ const VerifyPortal = () => {
                       <span className="text-muted-foreground font-display tracking-wider">BLOCK:</span>
                       <span className="font-mono text-neon-cyan">#{result.blockNumber}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground font-display tracking-wider">ISSUER:</span>
-                      <span className="font-mono break-all text-muted-foreground">{result.issuerAddress}</span>
-                    </div>
+                  </div>
+
+                  <div className="mt-4 p-3 rounded-xl bg-neon-green/5 border border-neon-green/20 text-xs text-center text-muted-foreground">
+                    <p>🔒 <strong>Privacy-preserving:</strong> Only the cryptographic hash is stored on-chain. Student details are kept securely off-chain.</p>
                   </div>
                 </div>
               ) : (

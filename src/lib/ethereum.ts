@@ -1,4 +1,4 @@
-import { BrowserProvider, Contract, JsonRpcProvider, isError } from "ethers";
+import { BrowserProvider, Contract, JsonRpcProvider } from "ethers";
 
 // ⚠️ REPLACE THIS with your deployed contract address on Sepolia
 const CONTRACT_ADDRESS = "0x8C8A3749FdFdD9245262491e7f5C2Cb525Ee6eD1";
@@ -6,12 +6,13 @@ const CONTRACT_ADDRESS = "0x8C8A3749FdFdD9245262491e7f5C2Cb525Ee6eD1";
 const SEPOLIA_CHAIN_ID = "0xaa36a7"; // 11155111
 const SEPOLIA_RPC = "https://rpc.sepolia.org";
 
+// Updated ABI — hash-only, no personal info on-chain
 const CONTRACT_ABI = [
-  "function registerCertificate(bytes32 _hash, string calldata _rollNumber, string calldata _studentName, string calldata _department) external",
-  "function verifyCertificate(bytes32 _hash) external view returns (bool exists, string rollNumber, string studentName, string department, uint256 timestamp, uint256 blockNum)",
+  "function registerCertificate(bytes32 _hash) external",
+  "function verifyCertificate(bytes32 _hash) external view returns (bool exists, uint256 timestamp, uint256 blockNum)",
   "function totalCertificates() external view returns (uint256)",
   "function owner() external view returns (address)",
-  "event CertificateRegistered(bytes32 indexed hash, string rollNumber, string studentName, string department, uint256 timestamp, uint256 blockNumber)",
+  "event CertificateRegistered(bytes32 indexed hash, uint256 timestamp, uint256 blockNumber)",
 ];
 
 function getWindow(): any {
@@ -32,7 +33,6 @@ export async function switchToSepolia(): Promise<void> {
       params: [{ chainId: SEPOLIA_CHAIN_ID }],
     });
   } catch (switchError: any) {
-    // Chain not added yet — add it
     if (switchError.code === 4902) {
       await ethereum.request({
         method: "wallet_addEthereumChain",
@@ -66,11 +66,11 @@ export async function connectWallet(): Promise<{ address: string; provider: Brow
   return { address: accounts[0], provider };
 }
 
+/**
+ * Register only the hash on-chain — no personal data.
+ */
 export async function registerCertificateOnChain(
-  hash: string,
-  rollNumber: string,
-  studentName: string,
-  department: string
+  hash: string
 ): Promise<{ txHash: string; blockNumber: number }> {
   const { provider } = await connectWallet();
   const signer = await provider.getSigner();
@@ -81,7 +81,7 @@ export async function registerCertificateOnChain(
     ? "0x" + hash.substring(0, 64) // Take first 32 bytes of SHA-512 for bytes32
     : "0x" + hash;
 
-  const tx = await contract.registerCertificate(bytes32Hash, rollNumber, studentName, department);
+  const tx = await contract.registerCertificate(bytes32Hash);
   const receipt = await tx.wait();
 
   return {
@@ -90,15 +90,15 @@ export async function registerCertificateOnChain(
   };
 }
 
+/**
+ * Verify a hash on-chain — returns only existence, timestamp, and block number.
+ * No personal data is returned from the blockchain.
+ */
 export async function verifyCertificateOnChain(hash: string): Promise<{
   exists: boolean;
-  rollNumber?: string;
-  studentName?: string;
-  department?: string;
   timestamp?: number;
   blockNumber?: number;
 }> {
-  // Use public RPC for read-only calls (no wallet needed)
   const provider = new JsonRpcProvider(SEPOLIA_RPC);
   const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
 
@@ -107,13 +107,10 @@ export async function verifyCertificateOnChain(hash: string): Promise<{
     : "0x" + hash;
 
   try {
-    const [exists, rollNumber, studentName, department, timestamp, blockNum] = await contract.verifyCertificate(bytes32Hash);
+    const [exists, timestamp, blockNum] = await contract.verifyCertificate(bytes32Hash);
     if (!exists) return { exists: false };
     return {
       exists: true,
-      rollNumber,
-      studentName,
-      department,
       timestamp: Number(timestamp),
       blockNumber: Number(blockNum),
     };
@@ -155,34 +152,4 @@ export function getContractAddress(): string {
 export function isContractConfigured(): boolean {
   const zeroAddress = "0x" + "0".repeat(40);
   return CONTRACT_ADDRESS.length > 0 && CONTRACT_ADDRESS !== zeroAddress;
-}
-
-/** Query all past CertificateRegistered events from the blockchain */
-export async function getAllOnChainCertificates(): Promise<{
-  hash: string;
-  rollNumber: string;
-  studentName: string;
-  department: string;
-  timestamp: number;
-  blockNumber: number;
-}[]> {
-  const provider = new JsonRpcProvider(SEPOLIA_RPC);
-  const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
-
-  try {
-    const filter = contract.filters.CertificateRegistered();
-    const events = await contract.queryFilter(filter, 0, "latest");
-
-    return events.map((event: any) => ({
-      hash: event.args[0], // bytes32 hash
-      rollNumber: event.args[1],
-      studentName: event.args[2],
-      department: event.args[3],
-      timestamp: Number(event.args[4]) * 1000,
-      blockNumber: Number(event.args[5] || event.blockNumber),
-    }));
-  } catch (err) {
-    console.error("Failed to fetch on-chain events:", err);
-    return [];
-  }
 }

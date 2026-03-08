@@ -58,14 +58,8 @@ const AddRecordForm = ({ onBack }: Props) => {
       const hash = await generateSHA512Hash({ ...form, totalMarks: marks });
       const verifyUrl = `${window.location.origin}/verify?hash=${hash}`;
 
-      const blockchainEntry = await addCertificate({
-        hash,
-        studentName: form.studentName,
-        rollNumber: form.rollNumber,
-        department: form.department,
-        timestamp: Date.now(),
-        txHash: "",
-      });
+      // Only the hash goes to blockchain — no personal data
+      const blockchainEntry = await addCertificate(hash);
 
       const record: StudentRecord = {
         id: crypto.randomUUID(),
