@@ -1,7 +1,7 @@
 import { BrowserProvider, Contract, JsonRpcProvider } from "ethers";
 
 // ⚠️ REPLACE THIS with your deployed contract address on Sepolia
-const CONTRACT_ADDRESS = "0x8C8A3749FdFdD9245262491e7f5C2Cb525Ee6eD1";
+const CONTRACT_ADDRESS = "0x9bBA5d5a15A74a3a871A63Bbfc2470E548859635";
 
 const SEPOLIA_CHAIN_ID = "0xaa36a7"; // 11155111
 const SEPOLIA_RPC = "https://rpc.sepolia.org";
