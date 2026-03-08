@@ -11,7 +11,7 @@ import { addCertificate } from "@/lib/blockchain";
 import { addRecord, addStudentUser, getDepartments } from "@/lib/database";
 import { StudentRecord } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import { connectWallet, isMetaMaskInstalled, isContractConfigured, getEtherscanTxUrl } from "@/lib/ethereum";
+import { connectWallet, isMetaMaskInstalled, getEtherscanTxUrl } from "@/lib/ethereum";
 
 interface Props {
   onBack: () => void;
@@ -34,8 +34,7 @@ const AddRecordForm = ({ onBack }: Props) => {
     totalMarks: "",
   });
 
-  const contractConfigured = isContractConfigured();
-  const useRealBlockchain = contractConfigured && isMetaMaskInstalled();
+  const metaMaskInstalled = isMetaMaskInstalled();
 
   const handleConnectWallet = async () => {
     try {
@@ -53,17 +52,15 @@ const AddRecordForm = ({ onBack }: Props) => {
     try {
       const marks = parseFloat(form.totalMarks);
       const hash = await generateSHA512Hash({ ...form, totalMarks: marks });
-      const mockTxHash = generateMockTxHash();
       const verifyUrl = `${window.location.origin}/verify?hash=${hash}`;
 
-      // addCertificate is now async — will call on-chain if configured
       const blockchainEntry = await addCertificate({
         hash,
         studentName: form.studentName,
         rollNumber: form.rollNumber,
         department: form.department,
         timestamp: Date.now(),
-        txHash: mockTxHash,
+        txHash: "",
       });
 
       const record: StudentRecord = {
@@ -86,9 +83,7 @@ const AddRecordForm = ({ onBack }: Props) => {
       setResult(record);
       toast({
         title: "✅ Certificate Registered",
-        description: useRealBlockchain
-          ? "Hash stored on Sepolia blockchain!"
-          : "Hash stored on simulated blockchain.",
+        description: "Hash stored on Sepolia blockchain!",
       });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -119,10 +114,8 @@ const AddRecordForm = ({ onBack }: Props) => {
                   className="mx-auto mb-4 h-20 w-20 rounded-full bg-neon-green/10 flex items-center justify-center neon-border-green neon-pulse">
                   <CheckCircle className="h-10 w-10 text-neon-green" />
                 </motion.div>
-                <h2 className="font-display text-2xl font-bold tracking-wider">REGISTERED</h2>
-                <p className="text-muted-foreground text-sm mt-1">
-                  {useRealBlockchain ? "Certificate stored on Sepolia blockchain" : "Certificate stored on blockchain"}
-                </p>
+                <h2 className="font-display text-2xl font-bold tracking-wider">REGISTERED ON SEPOLIA</h2>
+                <p className="text-muted-foreground text-sm mt-1">Certificate stored on Sepolia blockchain</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm mb-6">
@@ -197,12 +190,11 @@ const AddRecordForm = ({ onBack }: Props) => {
               </div>
               <div>
                 <h2 className="font-display text-xl font-bold tracking-wider">ADD RECORD</h2>
-                <p className="text-muted-foreground text-sm">Register a new certificate on blockchain</p>
+                <p className="text-muted-foreground text-sm">Register a new certificate on Sepolia</p>
               </div>
             </div>
 
-            {/* Wallet Connection */}
-            {useRealBlockchain && (
+            {metaMaskInstalled && (
               <div>
                 {walletAddress ? (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neon-green/10 border border-neon-green/20 text-xs">
@@ -220,15 +212,15 @@ const AddRecordForm = ({ onBack }: Props) => {
             )}
           </div>
 
-          {!contractConfigured && (
-            <div className="mb-6 p-3 rounded-xl bg-muted/20 border border-border/30 text-xs text-muted-foreground">
-              <p>⚠️ Using simulated blockchain. To use real Sepolia testnet: deploy the smart contract and update the contract address in <code className="font-mono text-neon-cyan">src/lib/ethereum.ts</code></p>
-            </div>
-          )}
-
-          {contractConfigured && !isMetaMaskInstalled() && (
-            <div className="mb-6 p-3 rounded-xl bg-neon-cyan/5 border border-neon-cyan/20 text-xs text-muted-foreground">
-              <p>🔗 Contract configured on Sepolia. Install <a href="https://metamask.io" target="_blank" rel="noopener noreferrer" className="text-neon-cyan hover:underline">MetaMask</a> to register certificates on-chain.</p>
+          {!metaMaskInstalled && (
+            <div className="mb-6 p-4 rounded-xl bg-muted/20 border border-border/30 text-sm text-muted-foreground text-center">
+              <Wallet className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
+              <p className="font-semibold mb-1">MetaMask Required</p>
+              <p className="text-xs mb-3">Install MetaMask to register certificates on Sepolia blockchain.</p>
+              <a href="https://metamask.io" target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-neon-cyan hover:underline text-xs">
+                <ExternalLink className="h-3 w-3" /> Install MetaMask
+              </a>
             </div>
           )}
 
@@ -273,12 +265,12 @@ const AddRecordForm = ({ onBack }: Props) => {
             <Button
               type="submit"
               className="w-full btn-neon-cyan border-0 h-12 font-display tracking-wider text-sm rounded-xl"
-              disabled={loading || !form.department || (useRealBlockchain && !walletAddress)}
+              disabled={loading || !form.department || !metaMaskInstalled || !walletAddress}
             >
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Blocks className="mr-2 h-4 w-4" />}
-              {loading ? "REGISTERING..." : useRealBlockchain ? "REGISTER ON SEPOLIA" : "REGISTER ON BLOCKCHAIN"}
+              {loading ? "REGISTERING ON SEPOLIA..." : "REGISTER ON SEPOLIA"}
             </Button>
-            {useRealBlockchain && !walletAddress && (
+            {metaMaskInstalled && !walletAddress && (
               <p className="text-xs text-center text-muted-foreground">Connect your wallet first to register on-chain</p>
             )}
           </form>
