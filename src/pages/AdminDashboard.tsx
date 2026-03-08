@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Plus, List, ShieldCheck, LogOut, Activity, Blocks, Hash, Clock, Hexagon, Zap, Building } from "lucide-react";
+import { Plus, List, ShieldCheck, LogOut, Activity, Blocks, Hash, Clock, Hexagon, Zap, Building, Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { getRecords } from "@/lib/database";
@@ -10,12 +10,13 @@ import { useToast } from "@/hooks/use-toast";
 import AddRecordForm from "@/components/AddRecordForm";
 import RecordsTable from "@/components/RecordsTable";
 import DepartmentManager from "@/components/DepartmentManager";
+import StudentManager from "@/components/StudentManager";
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [view, setView] = useState<"dashboard" | "add" | "records" | "departments">("dashboard");
+  const [view, setView] = useState<"dashboard" | "add" | "records" | "departments" | "students">("dashboard");
   const [records, setRecords] = useState(getRecords());
   const stats = getBlockchainStats();
 
@@ -37,6 +38,7 @@ const AdminDashboard = () => {
   if (view === "add") return <AddRecordForm onBack={() => { setView("dashboard"); refreshRecords(); }} />;
   if (view === "records") return <RecordsTable records={records} onBack={() => setView("dashboard")} />;
   if (view === "departments") return <DepartmentManager onBack={() => setView("dashboard")} />;
+  if (view === "students") return <StudentManager onBack={() => setView("dashboard")} />;
 
   return (
     <div className="min-h-screen bg-background cyber-grid">
@@ -88,6 +90,7 @@ const AdminDashboard = () => {
             { icon: Plus, title: "ADD RECORD", desc: "Register a certificate", onClick: () => setView("add"), glassClass: "glass-card", iconColor: "text-neon-cyan", borderClass: "neon-border-cyan" },
             { icon: List, title: "VIEW RECORDS", desc: `${records.length} registered`, onClick: () => setView("records"), glassClass: "glass-card-purple", iconColor: "text-neon-purple", borderClass: "neon-border-purple" },
             { icon: Building, title: "DEPARTMENTS", desc: "Manage departments", onClick: () => setView("departments"), glassClass: "glass-card", iconColor: "text-neon-pink", borderClass: "neon-border-cyan" },
+            { icon: Users, title: "STUDENTS", desc: "Manage credentials", onClick: () => setView("students"), glassClass: "glass-card-purple", iconColor: "text-neon-blue", borderClass: "neon-border-purple" },
             { icon: ShieldCheck, title: "VERIFY CHAIN", desc: "Integrity check", onClick: handleVerifyChain, glassClass: "glass-card-green", iconColor: "text-neon-green", borderClass: "neon-border-green" },
           ].map((item, i) => (
             <motion.div
