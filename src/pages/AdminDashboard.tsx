@@ -136,7 +136,28 @@ const AdminDashboard = () => {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {onChainTotal !== null && onChainTotal > records.length && (
+          <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+            <div className="glass-card rounded-2xl p-4 border border-yellow-500/30 bg-yellow-500/5 flex items-center justify-between">
+              <div className="flex items-center gap-3 text-sm">
+                <RefreshCw className="h-5 w-5 text-yellow-400" />
+                <span className="text-yellow-200">
+                  <strong>{onChainTotal - records.length}</strong> certificate(s) found on-chain but missing from the database.
+                </span>
+              </div>
+              <Button
+                onClick={handleSyncFromBlockchain}
+                disabled={syncing}
+                size="sm"
+                className="btn-neon-cyan border-0 font-display tracking-wider text-xs rounded-xl"
+              >
+                {syncing ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-2 h-3 w-3" />}
+                {syncing ? "SYNCING..." : "SYNC NOW"}
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
           {[
             { icon: Plus, title: "ADD RECORD", desc: "Register a certificate", onClick: () => setView("add"), glassClass: "glass-card", iconColor: "text-neon-cyan", borderClass: "neon-border-cyan" },
             { icon: List, title: "VIEW RECORDS", desc: `${records.length} registered`, onClick: () => setView("records"), glassClass: "glass-card-purple", iconColor: "text-neon-purple", borderClass: "neon-border-purple" },
