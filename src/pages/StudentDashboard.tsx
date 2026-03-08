@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { GraduationCap, LogOut, Download, Hash, Blocks, CheckCircle, AlertTriangle, Hexagon } from "lucide-react";
@@ -6,18 +6,21 @@ import { QRCodeCanvas } from "qrcode.react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getRecordByRollNumber } from "@/lib/database";
 import { Button } from "@/components/ui/button";
+import { StudentRecord } from "@/lib/types";
 
 const StudentDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const qrRef = useRef<HTMLDivElement>(null);
+  const [record, setRecord] = useState<StudentRecord | undefined>(undefined);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!user || user.role !== "student") navigate("/login?role=student");
+    if (!user || user.role !== "student") { navigate("/login?role=student"); return; }
+    getRecordByRollNumber(user.rollNumber || "").then(r => { setRecord(r); setLoaded(true); });
   }, [user, navigate]);
 
-  if (!user || user.role !== "student") return null;
-  const record = getRecordByRollNumber(user.rollNumber || "");
+  if (!user || user.role !== "student" || !loaded) return null;
 
   const downloadQR = () => {
     const canvas = qrRef.current?.querySelector("canvas");

@@ -20,9 +20,9 @@ const Login = () => {
 
   const isAdmin = role === "admin";
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = login(username, password);
+    const success = await login(username, password);
     if (success) {
       toast({ title: "Access Granted", description: "Authenticated successfully." });
       navigate(isAdmin ? "/admin" : "/student");

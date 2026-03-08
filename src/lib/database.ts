@@ -1,104 +1,79 @@
+import { supabase } from "@/integrations/supabase/client";
 import { StudentRecord, User } from "./types";
-
-const RECORDS_KEY = "student_records";
-const DEPARTMENTS_KEY = "departments";
-const USERS_KEY = "app_users";
-const PASSWORDS_KEY = "user_passwords";
-
-const DEFAULT_DEPARTMENTS = [
-  "Computer Science",
-  "Electronics",
-  "Mechanical",
-  "Civil",
-  "Electrical",
-  "Information Technology",
-  "Chemical",
-  "Biotechnology",
-];
-
-// Demo credentials
-const DEFAULT_USERS: User[] = [
-  { id: "admin-1", username: "admin", password: "admin123", role: "admin", name: "University Admin" },
-];
-
-export function initializeDatabase(): void {
-  // Check if stored users have the password field; if not, re-seed defaults
-  const existingUsers = localStorage.getItem(USERS_KEY);
-  if (!existingUsers) {
-    localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_USERS));
-  } else {
-    try {
-      const parsed = JSON.parse(existingUsers);
-      const adminUser = parsed.find((u: any) => u.username === "admin");
-      // Re-seed if admin is missing or has no password field (stale data)
-      if (!adminUser || !adminUser.password) {
-        const nonDefaults = parsed.filter((u: any) => !DEFAULT_USERS.some(d => d.username === u.username));
-        localStorage.setItem(USERS_KEY, JSON.stringify([...DEFAULT_USERS, ...nonDefaults]));
-      }
-      // Purge legacy hardcoded demo students that were never on the blockchain
-      const LEGACY_IDS = ["student-1", "student-2"];
-      const current = JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
-      const cleaned = current.filter((u: any) => !LEGACY_IDS.includes(u.id));
-      localStorage.setItem(USERS_KEY, JSON.stringify(cleaned));
-    } catch {
-      localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_USERS));
-    }
-  }
-  if (!localStorage.getItem(RECORDS_KEY)) {
-    localStorage.setItem(RECORDS_KEY, JSON.stringify([]));
-  }
-  if (!localStorage.getItem(DEPARTMENTS_KEY)) {
-    localStorage.setItem(DEPARTMENTS_KEY, JSON.stringify(DEFAULT_DEPARTMENTS));
-  }
-}
 
 // --- Department Management ---
 
-export function getDepartments(): string[] {
-  const data = localStorage.getItem(DEPARTMENTS_KEY);
-  return data ? JSON.parse(data) : DEFAULT_DEPARTMENTS;
+export async function getDepartments(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("departments")
+    .select("name")
+    .order("name");
+  if (error) throw new Error(error.message);
+  return (data || []).map(d => d.name);
 }
 
-export function addDepartment(name: string): void {
-  const departments = getDepartments();
+export async function addDepartment(name: string): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Department name cannot be empty");
-  if (departments.some(d => d.toLowerCase() === trimmed.toLowerCase())) {
-    throw new Error("Department already exists");
+  const { error } = await supabase.from("departments").insert({ name: trimmed });
+  if (error) {
+    if (error.code === "23505") throw new Error("Department already exists");
+    throw new Error(error.message);
   }
-  departments.push(trimmed);
-  localStorage.setItem(DEPARTMENTS_KEY, JSON.stringify(departments));
 }
 
-export function removeDepartment(name: string): void {
-  const records = getRecords();
-  const hasRecords = records.some(r => r.department === name);
-  if (hasRecords) {
+export async function removeDepartment(name: string): Promise<void> {
+  const records = await getRecords();
+  if (records.some(r => r.department === name)) {
     throw new Error("Cannot remove department — students are registered on the blockchain with this department");
   }
-  const departments = getDepartments().filter(d => d !== name);
-  localStorage.setItem(DEPARTMENTS_KEY, JSON.stringify(departments));
+  const { error } = await supabase.from("departments").delete().eq("name", name);
+  if (error) throw new Error(error.message);
 }
 
-export function isDepartmentInUse(name: string): boolean {
-  return getRecords().some(r => r.department === name);
+export async function isDepartmentInUse(name: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("student_records")
+    .select("id")
+    .eq("department", name)
+    .limit(1);
+  return (data || []).length > 0;
 }
 
 // --- User Management ---
 
-export function getUsers(): User[] {
-  return JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
+export async function authenticateUser(username: string, password: string): Promise<User | null> {
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("*")
+    .ilike("username", username)
+    .eq("password_hash", password)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    id: data.id,
+    username: data.username,
+    password: data.password_hash,
+    role: data.role as "admin" | "student",
+    name: data.name,
+    rollNumber: data.roll_number || undefined,
+  };
 }
 
-export function getStudentUsers(): User[] {
-  return getUsers().filter(u => u.role === "student");
-}
-
-export function authenticateUser(username: string, password: string): User | null {
-  const users = getUsers();
-  const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
-  if (user && user.password === password) return user;
-  return null;
+export async function getStudentUsers(): Promise<User[]> {
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("*")
+    .eq("role", "student");
+  if (error) return [];
+  return (data || []).map(d => ({
+    id: d.id,
+    username: d.username,
+    password: d.password_hash,
+    role: "student" as const,
+    name: d.name,
+    rollNumber: d.roll_number || undefined,
+  }));
 }
 
 function generatePassword(length = 8): string {
@@ -108,54 +83,151 @@ function generatePassword(length = 8): string {
   return pwd;
 }
 
-export function resetStudentPassword(userId: string): string {
-  const users = getUsers();
-  const user = users.find(u => u.id === userId);
-  if (!user) throw new Error("User not found");
-  if (user.role !== "student") throw new Error("Can only reset student passwords");
+export async function resetStudentPassword(userId: string): Promise<string> {
   const newPassword = generatePassword();
-  user.password = newPassword;
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  const { error } = await supabase
+    .from("app_users")
+    .update({ password_hash: newPassword })
+    .eq("id", userId)
+    .eq("role", "student");
+  if (error) throw new Error("Failed to reset password");
   return newPassword;
+}
+
+export async function addStudentUser(name: string, rollNumber: string): Promise<User> {
+  const username = rollNumber.toLowerCase();
+  // Check if already exists
+  const { data: existing } = await supabase
+    .from("app_users")
+    .select("*")
+    .eq("username", username)
+    .maybeSingle();
+  if (existing) {
+    return {
+      id: existing.id,
+      username: existing.username,
+      password: existing.password_hash,
+      role: existing.role as "admin" | "student",
+      name: existing.name,
+      rollNumber: existing.roll_number || undefined,
+    };
+  }
+  const defaultPassword = generatePassword();
+  const { data, error } = await supabase
+    .from("app_users")
+    .insert({
+      username,
+      password_hash: defaultPassword,
+      role: "student",
+      name,
+      roll_number: rollNumber,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return {
+    id: data.id,
+    username: data.username,
+    password: data.password_hash,
+    role: "student",
+    name: data.name,
+    rollNumber: data.roll_number || undefined,
+  };
 }
 
 // --- Record Management ---
 
-export function getRecords(): StudentRecord[] {
-  return JSON.parse(localStorage.getItem(RECORDS_KEY) || "[]");
+export async function getRecords(): Promise<StudentRecord[]> {
+  const { data, error } = await supabase
+    .from("student_records")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) return [];
+  return (data || []).map(d => ({
+    id: d.id,
+    studentName: d.student_name,
+    rollNumber: d.roll_number,
+    department: d.department,
+    academicYear: d.academic_year,
+    dateOfJoining: d.date_of_joining,
+    dateOfCompletion: d.date_of_completion,
+    totalMarks: d.total_marks,
+    certificateHash: d.certificate_hash,
+    blockchainTxHash: d.blockchain_tx_hash,
+    qrCodeData: d.qr_code_data,
+    createdAt: d.created_at,
+    status: d.status as "registered" | "verified",
+  }));
 }
 
-export function addRecord(record: StudentRecord): void {
-  const records = getRecords();
-  if (records.some(r => r.rollNumber === record.rollNumber)) {
-    throw new Error("DUPLICATE_ROLL: A record with this roll number already exists");
+export async function addRecord(record: StudentRecord): Promise<void> {
+  const { error } = await supabase.from("student_records").insert({
+    id: record.id,
+    student_name: record.studentName,
+    roll_number: record.rollNumber,
+    department: record.department,
+    academic_year: record.academicYear,
+    date_of_joining: record.dateOfJoining,
+    date_of_completion: record.dateOfCompletion,
+    total_marks: record.totalMarks,
+    certificate_hash: record.certificateHash,
+    blockchain_tx_hash: record.blockchainTxHash,
+    qr_code_data: record.qrCodeData,
+    status: record.status,
+  });
+  if (error) {
+    if (error.code === "23505") throw new Error("DUPLICATE_ROLL: A record with this roll number already exists");
+    throw new Error(error.message);
   }
-  records.push(record);
-  localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
 }
 
-export function getRecordByRollNumber(rollNumber: string): StudentRecord | undefined {
-  return getRecords().find(r => r.rollNumber === rollNumber);
-}
-
-export function getRecordByHash(hash: string): StudentRecord | undefined {
-  return getRecords().find(r => r.certificateHash === hash);
-}
-
-export function addStudentUser(name: string, rollNumber: string): User {
-  const users = getUsers();
-  const username = rollNumber.toLowerCase();
-  if (users.some(u => u.username === username)) return users.find(u => u.username === username)!;
-  const defaultPassword = generatePassword();
-  const newUser: User = {
-    id: `student-${Date.now()}`,
-    username,
-    password: defaultPassword,
-    role: "student",
-    name,
-    rollNumber,
+export async function getRecordByRollNumber(rollNumber: string): Promise<StudentRecord | undefined> {
+  const { data } = await supabase
+    .from("student_records")
+    .select("*")
+    .eq("roll_number", rollNumber)
+    .maybeSingle();
+  if (!data) return undefined;
+  return {
+    id: data.id,
+    studentName: data.student_name,
+    rollNumber: data.roll_number,
+    department: data.department,
+    academicYear: data.academic_year,
+    dateOfJoining: data.date_of_joining,
+    dateOfCompletion: data.date_of_completion,
+    totalMarks: data.total_marks,
+    certificateHash: data.certificate_hash,
+    blockchainTxHash: data.blockchain_tx_hash,
+    qrCodeData: data.qr_code_data,
+    createdAt: data.created_at,
+    status: data.status as "registered" | "verified",
   };
-  users.push(newUser);
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  return newUser;
 }
+
+export async function getRecordByHash(hash: string): Promise<StudentRecord | undefined> {
+  const { data } = await supabase
+    .from("student_records")
+    .select("*")
+    .eq("certificate_hash", hash)
+    .maybeSingle();
+  if (!data) return undefined;
+  return {
+    id: data.id,
+    studentName: data.student_name,
+    rollNumber: data.roll_number,
+    department: data.department,
+    academicYear: data.academic_year,
+    dateOfJoining: data.date_of_joining,
+    dateOfCompletion: data.date_of_completion,
+    totalMarks: data.total_marks,
+    certificateHash: data.certificate_hash,
+    blockchainTxHash: data.blockchain_tx_hash,
+    qrCodeData: data.qr_code_data,
+    createdAt: data.created_at,
+    status: data.status as "registered" | "verified",
+  };
+}
+
+// No-op for backward compat — DB is always initialized
+export function initializeDatabase(): void {}

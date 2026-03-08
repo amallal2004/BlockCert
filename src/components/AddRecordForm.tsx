@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Loader2, CheckCircle, Download, Hash, Blocks, Hexagon, Wallet, ExternalLink } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { generateSHA512Hash, generateMockTxHash } from "@/lib/crypto";
+import { generateSHA512Hash } from "@/lib/crypto";
 import { addCertificate } from "@/lib/blockchain";
 import { addRecord, addStudentUser, getDepartments } from "@/lib/database";
 import { StudentRecord } from "@/lib/types";
@@ -19,7 +19,7 @@ interface Props {
 
 const AddRecordForm = ({ onBack }: Props) => {
   const { toast } = useToast();
-  const departments = getDepartments();
+  const [departments, setDepartments] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [result, setResult] = useState<StudentRecord | null>(null);
@@ -35,6 +35,10 @@ const AddRecordForm = ({ onBack }: Props) => {
   });
 
   const metaMaskInstalled = isMetaMaskInstalled();
+
+  useEffect(() => {
+    getDepartments().then(setDepartments);
+  }, []);
 
   const handleConnectWallet = async () => {
     try {
@@ -78,12 +82,12 @@ const AddRecordForm = ({ onBack }: Props) => {
         createdAt: new Date().toISOString(),
         status: "registered",
       };
-      addRecord(record);
-      addStudentUser(form.studentName, form.rollNumber);
+      await addRecord(record);
+      await addStudentUser(form.studentName, form.rollNumber);
       setResult(record);
       toast({
         title: "✅ Certificate Registered",
-        description: "Hash stored on Sepolia blockchain!",
+        description: "Hash stored on Sepolia blockchain & database!",
       });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });

@@ -1,17 +1,17 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { User } from "@/lib/types";
-import { authenticateUser, initializeDatabase } from "@/lib/database";
+import { authenticateUser } from "@/lib/database";
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => boolean;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  login: () => false,
+  login: async () => false,
   logout: () => {},
   isAuthenticated: false,
 });
@@ -20,13 +20,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    initializeDatabase();
     const saved = localStorage.getItem("current_user");
     if (saved) setUser(JSON.parse(saved));
   }, []);
 
-  const login = (username: string, password: string): boolean => {
-    const u = authenticateUser(username, password);
+  const login = async (username: string, password: string): Promise<boolean> => {
+    const u = await authenticateUser(username, password);
     if (u) {
       setUser(u);
       localStorage.setItem("current_user", JSON.stringify(u));
