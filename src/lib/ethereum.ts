@@ -156,3 +156,33 @@ export function isContractConfigured(): boolean {
   const zeroAddress = "0x" + "0".repeat(40);
   return CONTRACT_ADDRESS.length > 0 && CONTRACT_ADDRESS !== zeroAddress;
 }
+
+/** Query all past CertificateRegistered events from the blockchain */
+export async function getAllOnChainCertificates(): Promise<{
+  hash: string;
+  rollNumber: string;
+  studentName: string;
+  department: string;
+  timestamp: number;
+  blockNumber: number;
+}[]> {
+  const provider = new JsonRpcProvider(SEPOLIA_RPC);
+  const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+
+  try {
+    const filter = contract.filters.CertificateRegistered();
+    const events = await contract.queryFilter(filter, 0, "latest");
+
+    return events.map((event: any) => ({
+      hash: event.args[0], // bytes32 hash
+      rollNumber: event.args[1],
+      studentName: event.args[2],
+      department: event.args[3],
+      timestamp: Number(event.args[4]) * 1000,
+      blockNumber: Number(event.args[5] || event.blockNumber),
+    }));
+  } catch (err) {
+    console.error("Failed to fetch on-chain events:", err);
+    return [];
+  }
+}
