@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Loader2, CheckCircle, Download, Hash, Blocks, Hexagon } from "lucide-react";
+import { ArrowLeft, Loader2, CheckCircle, Download, Hash, Blocks, Hexagon, Wallet, ExternalLink } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { addCertificate } from "@/lib/blockchain";
 import { addRecord, addStudentUser, getDepartments } from "@/lib/database";
 import { StudentRecord } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
+import { connectWallet, isMetaMaskInstalled, isContractConfigured, getEtherscanTxUrl } from "@/lib/ethereum";
 
 interface Props {
   onBack: () => void;
@@ -20,6 +21,7 @@ const AddRecordForm = ({ onBack }: Props) => {
   const { toast } = useToast();
   const departments = getDepartments();
   const [loading, setLoading] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [result, setResult] = useState<StudentRecord | null>(null);
   const qrRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState({
@@ -32,24 +34,61 @@ const AddRecordForm = ({ onBack }: Props) => {
     totalMarks: "",
   });
 
+  const useRealBlockchain = isContractConfigured() && isMetaMaskInstalled();
+
+  const handleConnectWallet = async () => {
+    try {
+      const { address } = await connectWallet();
+      setWalletAddress(address);
+      toast({ title: "✅ Wallet Connected", description: `${address.slice(0, 6)}...${address.slice(-4)}` });
+    } catch (err: any) {
+      toast({ title: "Wallet Error", description: err.message, variant: "destructive" });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
       const marks = parseFloat(form.totalMarks);
       const hash = await generateSHA512Hash({ ...form, totalMarks: marks });
-      const txHash = generateMockTxHash();
+      const mockTxHash = generateMockTxHash();
       const verifyUrl = `${window.location.origin}/verify?hash=${hash}`;
-      addCertificate({ hash, studentName: form.studentName, rollNumber: form.rollNumber, department: form.department, timestamp: Date.now(), txHash });
+
+      // addCertificate is now async — will call on-chain if configured
+      const blockchainEntry = await addCertificate({
+        hash,
+        studentName: form.studentName,
+        rollNumber: form.rollNumber,
+        department: form.department,
+        timestamp: Date.now(),
+        txHash: mockTxHash,
+      });
+
       const record: StudentRecord = {
-        id: crypto.randomUUID(), studentName: form.studentName, rollNumber: form.rollNumber, department: form.department, academicYear: form.academicYear,
-        dateOfJoining: form.dateOfJoining, dateOfCompletion: form.dateOfCompletion, totalMarks: marks, certificateHash: hash, blockchainTxHash: txHash,
-        qrCodeData: verifyUrl, createdAt: new Date().toISOString(), status: "registered",
+        id: crypto.randomUUID(),
+        studentName: form.studentName,
+        rollNumber: form.rollNumber,
+        department: form.department,
+        academicYear: form.academicYear,
+        dateOfJoining: form.dateOfJoining,
+        dateOfCompletion: form.dateOfCompletion,
+        totalMarks: marks,
+        certificateHash: hash,
+        blockchainTxHash: blockchainEntry.txHash,
+        qrCodeData: verifyUrl,
+        createdAt: new Date().toISOString(),
+        status: "registered",
       };
       addRecord(record);
       addStudentUser(form.studentName, form.rollNumber);
       setResult(record);
-      toast({ title: "✅ Certificate Registered", description: "Hash stored on blockchain." });
+      toast({
+        title: "✅ Certificate Registered",
+        description: useRealBlockchain
+          ? "Hash stored on Sepolia blockchain!"
+          : "Hash stored on simulated blockchain.",
+      });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -68,6 +107,7 @@ const AddRecordForm = ({ onBack }: Props) => {
   };
 
   if (result) {
+    const isRealTx = result.blockchainTxHash.startsWith("0x") && result.blockchainTxHash.length === 66;
     return (
       <div className="min-h-screen bg-background cyber-grid p-4">
         <div className="container mx-auto max-w-2xl">
@@ -79,7 +119,9 @@ const AddRecordForm = ({ onBack }: Props) => {
                   <CheckCircle className="h-10 w-10 text-neon-green" />
                 </motion.div>
                 <h2 className="font-display text-2xl font-bold tracking-wider">REGISTERED</h2>
-                <p className="text-muted-foreground text-sm mt-1">Certificate stored on blockchain</p>
+                <p className="text-muted-foreground text-sm mt-1">
+                  {useRealBlockchain ? "Certificate stored on Sepolia blockchain" : "Certificate stored on blockchain"}
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm mb-6">
@@ -104,8 +146,16 @@ const AddRecordForm = ({ onBack }: Props) => {
                   <p className="text-xs font-mono break-all text-muted-foreground">{result.certificateHash}</p>
                 </div>
                 <div className="p-4 rounded-xl bg-muted/20 border border-neon-purple/10">
-                  <div className="flex items-center gap-2 text-xs text-neon-purple mb-1 font-display tracking-wider">
-                    <Blocks className="h-3 w-3" /> TX HASH
+                  <div className="flex items-center justify-between text-xs text-neon-purple mb-1 font-display tracking-wider">
+                    <div className="flex items-center gap-2">
+                      <Blocks className="h-3 w-3" /> TX HASH
+                    </div>
+                    {isRealTx && (
+                      <a href={getEtherscanTxUrl(result.blockchainTxHash)} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-neon-cyan hover:underline">
+                        <ExternalLink className="h-3 w-3" /> Etherscan
+                      </a>
+                    )}
                   </div>
                   <p className="text-xs font-mono break-all text-muted-foreground">{result.blockchainTxHash}</p>
                 </div>
@@ -139,15 +189,41 @@ const AddRecordForm = ({ onBack }: Props) => {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
         <div className="glass-card rounded-2xl p-8 neon-border-cyan">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="h-12 w-12 rounded-xl btn-neon-cyan flex items-center justify-center">
-              <Hexagon className="h-6 w-6" />
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-xl btn-neon-cyan flex items-center justify-center">
+                <Hexagon className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="font-display text-xl font-bold tracking-wider">ADD RECORD</h2>
+                <p className="text-muted-foreground text-sm">Register a new certificate on blockchain</p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-display text-xl font-bold tracking-wider">ADD RECORD</h2>
-              <p className="text-muted-foreground text-sm">Register a new certificate on blockchain</p>
-            </div>
+
+            {/* Wallet Connection */}
+            {useRealBlockchain && (
+              <div>
+                {walletAddress ? (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neon-green/10 border border-neon-green/20 text-xs">
+                    <Wallet className="h-3 w-3 text-neon-green" />
+                    <span className="font-mono text-neon-green">
+                      {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                    </span>
+                  </div>
+                ) : (
+                  <Button onClick={handleConnectWallet} size="sm" className="btn-neon-purple border-0 font-display tracking-wider text-xs rounded-xl">
+                    <Wallet className="mr-2 h-3 w-3" /> CONNECT
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
+
+          {!useRealBlockchain && (
+            <div className="mb-6 p-3 rounded-xl bg-muted/20 border border-border/30 text-xs text-muted-foreground">
+              <p>⚠️ Using simulated blockchain. To use real Sepolia testnet: deploy the smart contract and update the contract address in <code className="font-mono text-neon-cyan">src/lib/ethereum.ts</code></p>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -187,10 +263,17 @@ const AddRecordForm = ({ onBack }: Props) => {
               <Label className="font-display text-xs tracking-wider text-muted-foreground">TOTAL MARKS (%)</Label>
               <Input type="number" required min={0} max={100} step={0.01} value={form.totalMarks} onChange={e => setForm(f => ({ ...f, totalMarks: e.target.value }))} placeholder="85.5" className={inputClass} />
             </div>
-            <Button type="submit" className="w-full btn-neon-cyan border-0 h-12 font-display tracking-wider text-sm rounded-xl" disabled={loading || !form.department}>
+            <Button
+              type="submit"
+              className="w-full btn-neon-cyan border-0 h-12 font-display tracking-wider text-sm rounded-xl"
+              disabled={loading || !form.department || (useRealBlockchain && !walletAddress)}
+            >
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Blocks className="mr-2 h-4 w-4" />}
-              {loading ? "REGISTERING..." : "REGISTER ON BLOCKCHAIN"}
+              {loading ? "REGISTERING..." : useRealBlockchain ? "REGISTER ON SEPOLIA" : "REGISTER ON BLOCKCHAIN"}
             </Button>
+            {useRealBlockchain && !walletAddress && (
+              <p className="text-xs text-center text-muted-foreground">Connect your wallet first to register on-chain</p>
+            )}
           </form>
         </div>
       </div>
