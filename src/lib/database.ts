@@ -24,8 +24,23 @@ const DEFAULT_USERS: User[] = [
 ];
 
 export function initializeDatabase(): void {
-  if (!localStorage.getItem(USERS_KEY)) {
+  // Check if stored users have the password field; if not, re-seed defaults
+  const existingUsers = localStorage.getItem(USERS_KEY);
+  if (!existingUsers) {
     localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_USERS));
+  } else {
+    try {
+      const parsed = JSON.parse(existingUsers);
+      const adminUser = parsed.find((u: any) => u.username === "admin");
+      // Re-seed if admin is missing or has no password field (stale data)
+      if (!adminUser || !adminUser.password) {
+        // Merge: keep custom students, but fix admin
+        const nonDefaults = parsed.filter((u: any) => !DEFAULT_USERS.some(d => d.username === u.username));
+        localStorage.setItem(USERS_KEY, JSON.stringify([...DEFAULT_USERS, ...nonDefaults]));
+      }
+    } catch {
+      localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_USERS));
+    }
   }
   if (!localStorage.getItem(RECORDS_KEY)) {
     localStorage.setItem(RECORDS_KEY, JSON.stringify([]));
