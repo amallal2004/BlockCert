@@ -34,7 +34,8 @@ const AddRecordForm = ({ onBack }: Props) => {
     totalMarks: "",
   });
 
-  const useRealBlockchain = isContractConfigured() && isMetaMaskInstalled();
+  const contractConfigured = isContractConfigured();
+  const useRealBlockchain = contractConfigured && isMetaMaskInstalled();
 
   const handleConnectWallet = async () => {
     try {
@@ -219,9 +220,15 @@ const AddRecordForm = ({ onBack }: Props) => {
             )}
           </div>
 
-          {!useRealBlockchain && (
+          {!contractConfigured && (
             <div className="mb-6 p-3 rounded-xl bg-muted/20 border border-border/30 text-xs text-muted-foreground">
               <p>⚠️ Using simulated blockchain. To use real Sepolia testnet: deploy the smart contract and update the contract address in <code className="font-mono text-neon-cyan">src/lib/ethereum.ts</code></p>
+            </div>
+          )}
+
+          {contractConfigured && !isMetaMaskInstalled() && (
+            <div className="mb-6 p-3 rounded-xl bg-neon-cyan/5 border border-neon-cyan/20 text-xs text-muted-foreground">
+              <p>🔗 Contract configured on Sepolia. Install <a href="https://metamask.io" target="_blank" rel="noopener noreferrer" className="text-neon-cyan hover:underline">MetaMask</a> to register certificates on-chain.</p>
             </div>
           )}
 
