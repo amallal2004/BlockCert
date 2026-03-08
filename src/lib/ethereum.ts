@@ -60,7 +60,7 @@ export async function switchToSepolia(): Promise<void> {
           chainId: SEPOLIA_CHAIN_ID,
           chainName: "Sepolia Testnet",
           nativeCurrency: { name: "SepoliaETH", symbol: "ETH", decimals: 18 },
-          rpcUrls: [SEPOLIA_RPC],
+          rpcUrls: [SEPOLIA_RPCS[0]],
           blockExplorerUrls: ["https://sepolia.etherscan.io"],
         }],
       });
