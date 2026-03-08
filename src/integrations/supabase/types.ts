@@ -14,10 +14,131 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      app_users: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          password_hash: string
+          role: string
+          roll_number: string | null
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          password_hash: string
+          role?: string
+          roll_number?: string | null
+          username: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          password_hash?: string
+          role?: string
+          roll_number?: string | null
+          username?: string
+        }
+        Relationships: []
+      }
+      departments: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      student_records: {
+        Row: {
+          academic_year: string
+          blockchain_tx_hash: string
+          certificate_hash: string
+          created_at: string
+          date_of_completion: string
+          date_of_joining: string
+          department: string
+          id: string
+          qr_code_data: string
+          roll_number: string
+          status: string
+          student_name: string
+          total_marks: number
+        }
+        Insert: {
+          academic_year: string
+          blockchain_tx_hash?: string
+          certificate_hash: string
+          created_at?: string
+          date_of_completion: string
+          date_of_joining: string
+          department: string
+          id?: string
+          qr_code_data?: string
+          roll_number: string
+          status?: string
+          student_name: string
+          total_marks: number
+        }
+        Update: {
+          academic_year?: string
+          blockchain_tx_hash?: string
+          certificate_hash?: string
+          created_at?: string
+          date_of_completion?: string
+          date_of_joining?: string
+          department?: string
+          id?: string
+          qr_code_data?: string
+          roll_number?: string
+          status?: string
+          student_name?: string
+          total_marks?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      app_users_public: {
+        Row: {
+          created_at: string | null
+          id: string | null
+          name: string | null
+          role: string | null
+          roll_number: string | null
+          username: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string | null
+          name?: string | null
+          role?: string | null
+          roll_number?: string | null
+          username?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string | null
+          name?: string | null
+          role?: string | null
+          roll_number?: string | null
+          username?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       [_ in never]: never
