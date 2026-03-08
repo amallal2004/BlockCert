@@ -153,5 +153,5 @@ export function getContractAddress(): string {
 }
 
 export function isContractConfigured(): boolean {
-  return CONTRACT_ADDRESS !== "0x0000000000000000000000000000000000000000";
+  return CONTRACT_ADDRESS !== "" && !CONTRACT_ADDRESS.startsWith("0x000000000000000000000000000000000000000");
 }
