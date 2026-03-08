@@ -14,17 +14,6 @@ export interface StudentRecord {
   status: 'registered' | 'verified';
 }
 
-export interface BlockchainEntry {
-  hash: string;
-  studentName: string;
-  rollNumber: string;
-  department: string;
-  timestamp: number;
-  issuerAddress: string;
-  txHash: string;
-  blockNumber: number;
-}
-
 export interface User {
   id: string;
   username: string;
@@ -36,13 +25,14 @@ export interface User {
 
 export interface VerificationResult {
   isValid: boolean;
+  // On-chain data (only hash proof)
+  timestamp?: number;
+  blockNumber?: number;
+  txHash?: string;
+  // Off-chain data (from database)
   studentName?: string;
   rollNumber?: string;
   department?: string;
   academicYear?: string;
   totalMarks?: number;
-  timestamp?: number;
-  issuerAddress?: string;
-  txHash?: string;
-  blockNumber?: number;
 }

@@ -3,16 +3,14 @@ pragma solidity ^0.8.19;
 
 /**
  * @title CertificateRegistry
- * @notice Deploy this contract on Sepolia testnet via Remix IDE (remix.ethereum.org)
- * @dev Only the deployer (owner) can register certificates. Anyone can verify.
+ * @notice Privacy-preserving certificate registry. Only stores cryptographic hashes.
+ * @dev No personal student information is stored on-chain.
  *
- * Steps to deploy:
- * 1. Go to https://remix.ethereum.org
- * 2. Create a new file, paste this code
- * 3. Compile with Solidity 0.8.19+
- * 4. Deploy → Environment: "Injected Provider (MetaMask)" → Select Sepolia
- * 5. Click Deploy
- * 6. Copy the deployed contract address and share it
+ * Deploy via Remix IDE (remix.ethereum.org):
+ * 1. Create a new file, paste this code
+ * 2. Compile with Solidity 0.8.19+
+ * 3. Deploy → Environment: "Injected Provider (MetaMask)" → Select Sepolia
+ * 4. Copy the deployed contract address
  */
 
 contract CertificateRegistry {
@@ -21,9 +19,6 @@ contract CertificateRegistry {
 
     struct Certificate {
         bool exists;
-        string rollNumber;
-        string studentName;
-        string department;
         uint256 timestamp;
         uint256 blockNumber;
     }
@@ -32,9 +27,6 @@ contract CertificateRegistry {
 
     event CertificateRegistered(
         bytes32 indexed hash,
-        string rollNumber,
-        string studentName,
-        string department,
         uint256 timestamp,
         uint256 blockNumber
     );
@@ -48,37 +40,26 @@ contract CertificateRegistry {
         owner = msg.sender;
     }
 
-    function registerCertificate(
-        bytes32 _hash,
-        string calldata _rollNumber,
-        string calldata _studentName,
-        string calldata _department
-    ) external onlyOwner {
+    function registerCertificate(bytes32 _hash) external onlyOwner {
         require(!certificates[_hash].exists, "Certificate already registered");
 
         certificates[_hash] = Certificate({
             exists: true,
-            rollNumber: _rollNumber,
-            studentName: _studentName,
-            department: _department,
             timestamp: block.timestamp,
             blockNumber: block.number
         });
 
         totalCertificates++;
 
-        emit CertificateRegistered(_hash, _rollNumber, _studentName, _department, block.timestamp, block.number);
+        emit CertificateRegistered(_hash, block.timestamp, block.number);
     }
 
     function verifyCertificate(bytes32 _hash) external view returns (
         bool exists,
-        string memory rollNumber,
-        string memory studentName,
-        string memory department,
         uint256 timestamp,
         uint256 blockNum
     ) {
         Certificate memory cert = certificates[_hash];
-        return (cert.exists, cert.rollNumber, cert.studentName, cert.department, cert.timestamp, cert.blockNumber);
+        return (cert.exists, cert.timestamp, cert.blockNumber);
     }
 }
