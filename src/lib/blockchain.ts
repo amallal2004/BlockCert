@@ -1,108 +1,73 @@
 import { BlockchainEntry } from "./types";
-import { registerCertificateOnChain, verifyCertificateOnChain, isContractConfigured } from "./ethereum";
+import { registerCertificateOnChain, verifyCertificateOnChain, getOnChainStats, isMetaMaskInstalled } from "./ethereum";
 
-const BLOCKCHAIN_KEY = "blockchain_ledger";
-const ISSUER_ADDRESS = "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18";
+/**
+ * All operations go through the Sepolia smart contract.
+ * localStorage is used only as a local cache for display (academic year, marks, etc.)
+ * but the source of truth is always the blockchain.
+ */
 
-function getLedger(): BlockchainEntry[] {
-  const data = localStorage.getItem(BLOCKCHAIN_KEY);
+const LEDGER_CACHE_KEY = "blockchain_ledger_cache";
+
+function getCache(): BlockchainEntry[] {
+  const data = localStorage.getItem(LEDGER_CACHE_KEY);
   return data ? JSON.parse(data) : [];
 }
 
-function saveLedger(ledger: BlockchainEntry[]): void {
-  localStorage.setItem(BLOCKCHAIN_KEY, JSON.stringify(ledger));
+function saveCache(ledger: BlockchainEntry[]): void {
+  localStorage.setItem(LEDGER_CACHE_KEY, JSON.stringify(ledger));
 }
 
 export async function addCertificate(
   entry: Omit<BlockchainEntry, "blockNumber" | "issuerAddress">
 ): Promise<BlockchainEntry> {
-  const ledger = getLedger();
-
-  if (ledger.some(e => e.hash === entry.hash)) {
-    throw new Error("DUPLICATE_HASH: Certificate hash already exists on the blockchain");
+  if (!isMetaMaskInstalled()) {
+    throw new Error("MetaMask is required to register certificates on the blockchain.");
   }
 
-  let txHash = entry.txHash;
-  let blockNumber = ledger.length + 1;
-  let issuerAddress = ISSUER_ADDRESS;
-
-  // If the real contract is configured, register on-chain
-  if (isContractConfigured()) {
-    const result = await registerCertificateOnChain(entry.hash, entry.rollNumber, entry.studentName, entry.department);
-    txHash = result.txHash;
-    blockNumber = result.blockNumber;
-  }
+  const result = await registerCertificateOnChain(entry.hash, entry.rollNumber, entry.studentName, entry.department);
 
   const fullEntry: BlockchainEntry = {
     ...entry,
-    txHash,
-    issuerAddress,
-    blockNumber,
+    txHash: result.txHash,
+    issuerAddress: result.issuerAddress || "",
+    blockNumber: result.blockNumber,
   };
 
-  ledger.push(fullEntry);
-  saveLedger(ledger);
+  // Cache locally for dashboard display
+  const cache = getCache();
+  cache.push(fullEntry);
+  saveCache(cache);
+
   return fullEntry;
 }
 
 export async function verifyCertificate(hash: string): Promise<{ exists: boolean; entry?: BlockchainEntry }> {
-  // Try on-chain first if configured
-  if (isContractConfigured()) {
-    const onChain = await verifyCertificateOnChain(hash);
-    if (onChain.exists) {
-      // Merge with local data for full details
-      const ledger = getLedger();
-      const localEntry = ledger.find(e => e.hash === hash);
-      if (localEntry) {
-        return { exists: true, entry: localEntry };
-      }
-      // On-chain exists but not in local cache
-      return {
-        exists: true,
-        entry: {
-          hash,
-          studentName: onChain.studentName || "",
-          rollNumber: onChain.rollNumber || "",
-          department: onChain.department || "",
-          timestamp: (onChain.timestamp || 0) * 1000,
-          issuerAddress: ISSUER_ADDRESS,
-          txHash: "",
-          blockNumber: onChain.blockNumber || 0,
-        },
-      };
-    }
-  }
+  const onChain = await verifyCertificateOnChain(hash);
+  if (!onChain.exists) return { exists: false };
 
-  // Fallback to local ledger
-  const ledger = getLedger();
-  const entry = ledger.find(e => e.hash === hash);
-  return entry ? { exists: true, entry } : { exists: false };
-}
-
-export function getAllEntries(): BlockchainEntry[] {
-  return getLedger();
-}
-
-export function getBlockchainStats() {
-  const ledger = getLedger();
   return {
-    totalBlocks: ledger.length,
-    totalCertificates: ledger.length,
-    lastBlockTimestamp: ledger.length > 0 ? ledger[ledger.length - 1].timestamp : null,
-    issuerAddress: ISSUER_ADDRESS,
+    exists: true,
+    entry: {
+      hash,
+      studentName: onChain.studentName || "",
+      rollNumber: onChain.rollNumber || "",
+      department: onChain.department || "",
+      timestamp: (onChain.timestamp || 0) * 1000,
+      issuerAddress: "",
+      txHash: "",
+      blockNumber: onChain.blockNumber || 0,
+    },
   };
 }
 
-export function verifyChainIntegrity(): { isValid: boolean; message: string } {
-  const ledger = getLedger();
-  if (ledger.length === 0) return { isValid: true, message: "Chain is empty — no entries to verify." };
+export function getCachedEntries(): BlockchainEntry[] {
+  return getCache();
+}
 
-  for (let i = 0; i < ledger.length; i++) {
-    if (ledger[i].blockNumber !== i + 1) {
-      // When using real blockchain, block numbers won't be sequential
-      if (isContractConfigured()) continue;
-      return { isValid: false, message: `Block number mismatch at index ${i}` };
-    }
-  }
-  return { isValid: true, message: `All ${ledger.length} blocks verified. Chain integrity intact.` };
+export async function getBlockchainStats(): Promise<{
+  totalCertificates: number;
+  owner: string;
+}> {
+  return getOnChainStats();
 }
