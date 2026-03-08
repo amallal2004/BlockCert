@@ -93,9 +93,9 @@ const Login = () => {
           <div className="mt-5 p-3 rounded-xl bg-muted/20 border border-border/30 text-xs text-muted-foreground">
             <Hexagon className="h-3 w-3 inline mr-1 text-neon-cyan" />
             {isAdmin ? (
-              <span className="font-mono">Demo: admin / admin123</span>
+              <span>Enter your administrator credentials to access the dashboard.</span>
             ) : (
-              <span>Login with your <span className="text-neon-purple font-semibold">Roll Number</span> (lowercase) and password provided by admin. Default password = roll number.</span>
+              <span>Login with your <span className="text-neon-purple font-semibold">Roll Number</span> (lowercase) and password provided by admin.</span>
             )}
           </div>
 
