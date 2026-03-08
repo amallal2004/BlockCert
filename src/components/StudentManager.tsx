@@ -23,7 +23,7 @@ const StudentManager = ({ onBack }: Props) => {
   const handleReset = (userId: string) => {
     try {
       const newPwd = resetStudentPassword(userId);
-      setStudents(getStudentUsers());
+      setStudents(getValidStudents());
       toast({ title: "✅ Password Reset", description: `New password: ${newPwd}` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
