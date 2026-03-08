@@ -1,17 +1,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Plus, List, LogOut, Activity, Blocks, Hash, Clock, Hexagon, Zap, Building, Users, Wallet, ExternalLink } from "lucide-react";
+import { Plus, List, LogOut, Activity, Blocks, Hash, Clock, Hexagon, Zap, Building, Users, Wallet, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { getRecords } from "@/lib/database";
+import { getRecords, syncFromBlockchain } from "@/lib/database";
 import { getBlockchainStats } from "@/lib/blockchain";
 import { useToast } from "@/hooks/use-toast";
 import AddRecordForm from "@/components/AddRecordForm";
 import RecordsTable from "@/components/RecordsTable";
 import DepartmentManager from "@/components/DepartmentManager";
 import StudentManager from "@/components/StudentManager";
-import { connectWallet, isMetaMaskInstalled, getEtherscanAddressUrl, getContractAddress } from "@/lib/ethereum";
+import { connectWallet, isMetaMaskInstalled, getEtherscanAddressUrl, getContractAddress, getAllOnChainCertificates } from "@/lib/ethereum";
 import { StudentRecord } from "@/lib/types";
 
 const AdminDashboard = () => {
@@ -22,6 +22,7 @@ const AdminDashboard = () => {
   const [records, setRecords] = useState<StudentRecord[]>([]);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [onChainTotal, setOnChainTotal] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     if (!user || user.role !== "admin") navigate("/login?role=admin");
@@ -46,6 +47,28 @@ const AdminDashboard = () => {
   };
 
   const refreshRecords = () => { getRecords().then(setRecords); };
+
+  const handleSyncFromBlockchain = async () => {
+    setSyncing(true);
+    try {
+      const onChainRecords = await getAllOnChainCertificates();
+      if (onChainRecords.length === 0) {
+        toast({ title: "No on-chain records found", description: "Could not fetch events from the blockchain. The RPC may be rate-limiting.", variant: "destructive" });
+        return;
+      }
+      const { syncedRecords, syncedUsers } = await syncFromBlockchain(onChainRecords);
+      if (syncedRecords === 0 && syncedUsers === 0) {
+        toast({ title: "Already in sync", description: "All blockchain records are already in the database." });
+      } else {
+        toast({ title: "✅ Sync Complete", description: `Synced ${syncedRecords} record(s) and ${syncedUsers} student account(s) from blockchain.` });
+        refreshRecords();
+      }
+    } catch (err: any) {
+      toast({ title: "Sync Error", description: err.message, variant: "destructive" });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   if (view === "add") return <AddRecordForm onBack={() => { setView("dashboard"); refreshRecords(); }} />;
   if (view === "records") return <RecordsTable records={records} onBack={() => setView("dashboard")} />;
