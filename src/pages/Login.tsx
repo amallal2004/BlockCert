@@ -25,7 +25,7 @@ const Login = () => {
       toast({ title: "Access Granted", description: "Authenticated successfully." });
       navigate(role === "admin" ? "/admin" : "/student");
     } else {
-      toast({ title: "Access Denied", description: "Invalid credentials. Try admin/admin or student1/student1", variant: "destructive" });
+      toast({ title: "Access Denied", description: "Invalid credentials. Contact your admin for login details.", variant: "destructive" });
     }
   };
 

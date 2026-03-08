@@ -173,7 +173,7 @@ const Home = () => {
       {/* Footer */}
       <footer className="py-8 text-center text-sm text-muted-foreground border-t border-border/50 relative z-10">
         <p className="font-display tracking-wider text-xs">BLOCKCERT — BLOCKCHAIN CERTIFICATE VALIDATION SYSTEM</p>
-        <p className="mt-2 text-muted-foreground/60">Demo credentials: admin/admin · student1/student1</p>
+        <p className="mt-2 text-muted-foreground/60">Admin: admin / admin123 · Students: login with roll number (provided by admin)</p>
       </footer>
     </div>
   );
