@@ -158,6 +158,7 @@ const AdminDashboard = () => {
           </motion.div>
         )}
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
             { icon: Plus, title: "ADD RECORD", desc: "Register a certificate", onClick: () => setView("add"), glassClass: "glass-card", iconColor: "text-neon-cyan", borderClass: "neon-border-cyan" },
             { icon: List, title: "VIEW RECORDS", desc: `${records.length} registered`, onClick: () => setView("records"), glassClass: "glass-card-purple", iconColor: "text-neon-purple", borderClass: "neon-border-purple" },
