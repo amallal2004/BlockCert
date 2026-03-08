@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Users, KeyRound, Eye, EyeOff, RotateCcw, Lock } from "lucide-react";
+import { ArrowLeft, Users, Eye, EyeOff, RotateCcw, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { getStudentUsers, resetStudentPassword } from "@/lib/database";
 import { useToast } from "@/hooks/use-toast";
 
@@ -12,17 +11,14 @@ interface Props {
 
 const StudentManager = ({ onBack }: Props) => {
   const { toast } = useToast();
-  const students = getStudentUsers();
-  const [resetId, setResetId] = useState<string | null>(null);
-  const [newPassword, setNewPassword] = useState("");
+  const [students, setStudents] = useState(getStudentUsers());
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
 
   const handleReset = (userId: string) => {
     try {
-      resetStudentPassword(userId, newPassword);
-      toast({ title: "✅ Password Reset", description: "Student password has been updated." });
-      setResetId(null);
-      setNewPassword("");
+      const newPwd = resetStudentPassword(userId);
+      setStudents(getStudentUsers());
+      toast({ title: "✅ Password Reset", description: `New password: ${newPwd}` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
@@ -73,14 +69,13 @@ const StudentManager = ({ onBack }: Props) => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => { setResetId(resetId === student.id ? null : student.id); setNewPassword(""); }}
+                        onClick={() => handleReset(student.id)}
                         className="text-neon-cyan hover:text-neon-cyan/80 font-display text-xs tracking-wider"
                       >
                         <RotateCcw className="mr-1 h-3 w-3" /> RESET
                       </Button>
                     </div>
 
-                    {/* Current credentials */}
                     <div className="flex items-center gap-4 text-xs mt-2">
                       <div className="flex items-center gap-1.5">
                         <span className="text-muted-foreground font-display tracking-wider">USER:</span>
@@ -88,38 +83,12 @@ const StudentManager = ({ onBack }: Props) => {
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-muted-foreground font-display tracking-wider">PASS:</span>
-                        <span className="font-mono">{showPasswords[student.id] ? student.password : "••••••"}</span>
+                        <span className="font-mono">{showPasswords[student.id] ? student.password : "••••••••"}</span>
                         <button onClick={() => toggleShowPassword(student.id)} className="text-muted-foreground hover:text-foreground">
                           {showPasswords[student.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                         </button>
                       </div>
                     </div>
-
-                    {/* Reset form */}
-                    {resetId === student.id && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        className="mt-3 pt-3 border-t border-border/20"
-                      >
-                        <div className="flex gap-2">
-                          <Input
-                            value={newPassword}
-                            onChange={e => setNewPassword(e.target.value)}
-                            placeholder="New password (min 4 chars)"
-                            type="text"
-                            className="bg-muted/30 border-border/50 h-10 font-mono text-sm focus:border-neon-cyan"
-                          />
-                          <Button
-                            onClick={() => handleReset(student.id)}
-                            disabled={newPassword.length < 4}
-                            className="btn-neon-cyan border-0 shrink-0 font-display tracking-wider text-xs rounded-xl h-10 px-4"
-                          >
-                            <KeyRound className="mr-1 h-3 w-3" /> SET
-                          </Button>
-                        </div>
-                      </motion.div>
-                    )}
                   </div>
                 </motion.div>
               ))}
@@ -131,7 +100,7 @@ const StudentManager = ({ onBack }: Props) => {
               <Lock className="h-3 w-3 text-neon-purple" />
               <span className="font-display tracking-wider text-neon-purple">NOTE</span>
             </div>
-            <p>Student accounts are auto-created when you register a certificate. Username = roll number (lowercase). Default password = roll number. You can reset passwords here anytime.</p>
+            <p>Student accounts are auto-created when you register a certificate. Username = roll number (lowercase). Passwords are auto-generated. Click RESET to regenerate a new password instantly.</p>
           </div>
         </div>
       </div>

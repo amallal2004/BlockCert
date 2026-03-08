@@ -101,16 +101,22 @@ export function authenticateUser(username: string, password: string): User | nul
   return null;
 }
 
-export function resetStudentPassword(userId: string, newPassword: string): void {
-  if (!newPassword || newPassword.length < 4) {
-    throw new Error("Password must be at least 4 characters");
-  }
+function generatePassword(length = 8): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghkmnpqrstuvwxyz23456789";
+  let pwd = "";
+  for (let i = 0; i < length; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
+  return pwd;
+}
+
+export function resetStudentPassword(userId: string): string {
   const users = getUsers();
   const user = users.find(u => u.id === userId);
   if (!user) throw new Error("User not found");
   if (user.role !== "student") throw new Error("Can only reset student passwords");
+  const newPassword = generatePassword();
   user.password = newPassword;
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  return newPassword;
 }
 
 // --- Record Management ---
@@ -140,8 +146,7 @@ export function addStudentUser(name: string, rollNumber: string): User {
   const users = getUsers();
   const username = rollNumber.toLowerCase();
   if (users.some(u => u.username === username)) return users.find(u => u.username === username)!;
-  // Default password is the roll number (lowercase)
-  const defaultPassword = username;
+  const defaultPassword = generatePassword();
   const newUser: User = {
     id: `student-${Date.now()}`,
     username,
