@@ -28,7 +28,7 @@ export async function addCertificate(
 
   // If the real contract is configured, register on-chain
   if (isContractConfigured()) {
-    const result = await registerCertificateOnChain(entry.hash, entry.rollNumber);
+    const result = await registerCertificateOnChain(entry.hash, entry.rollNumber, entry.studentName, entry.department);
     txHash = result.txHash;
     blockNumber = result.blockNumber;
   }
@@ -61,9 +61,9 @@ export async function verifyCertificate(hash: string): Promise<{ exists: boolean
         exists: true,
         entry: {
           hash,
-          studentName: "",
+          studentName: onChain.studentName || "",
           rollNumber: onChain.rollNumber || "",
-          department: "",
+          department: onChain.department || "",
           timestamp: (onChain.timestamp || 0) * 1000,
           issuerAddress: ISSUER_ADDRESS,
           txHash: "",
