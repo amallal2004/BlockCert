@@ -19,8 +19,6 @@ const DEFAULT_DEPARTMENTS = [
 // Demo credentials
 const DEFAULT_USERS: User[] = [
   { id: "admin-1", username: "admin", password: "admin123", role: "admin", name: "University Admin" },
-  { id: "student-1", username: "cs2024001", password: "cs2024001", role: "student", name: "Rahul Sharma", rollNumber: "CS2024001" },
-  { id: "student-2", username: "ec2024002", password: "ec2024002", role: "student", name: "Priya Patel", rollNumber: "EC2024002" },
 ];
 
 export function initializeDatabase(): void {
@@ -34,10 +32,14 @@ export function initializeDatabase(): void {
       const adminUser = parsed.find((u: any) => u.username === "admin");
       // Re-seed if admin is missing or has no password field (stale data)
       if (!adminUser || !adminUser.password) {
-        // Merge: keep custom students, but fix admin
         const nonDefaults = parsed.filter((u: any) => !DEFAULT_USERS.some(d => d.username === u.username));
         localStorage.setItem(USERS_KEY, JSON.stringify([...DEFAULT_USERS, ...nonDefaults]));
       }
+      // Purge legacy hardcoded demo students that were never on the blockchain
+      const LEGACY_IDS = ["student-1", "student-2"];
+      const current = JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
+      const cleaned = current.filter((u: any) => !LEGACY_IDS.includes(u.id));
+      localStorage.setItem(USERS_KEY, JSON.stringify(cleaned));
     } catch {
       localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_USERS));
     }
