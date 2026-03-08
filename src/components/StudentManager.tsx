@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Users, Eye, EyeOff, RotateCcw, Lock } from "lucide-react";
+import { ArrowLeft, Users, RotateCcw, Lock, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getStudentUsers, resetStudentPassword } from "@/lib/database";
 import { useToast } from "@/hooks/use-toast";
@@ -13,7 +13,8 @@ interface Props {
 const StudentManager = ({ onBack }: Props) => {
   const { toast } = useToast();
   const [students, setStudents] = useState<User[]>([]);
-  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+  const [resetPasswords, setResetPasswords] = useState<Record<string, string>>({});
+  const [copied, setCopied] = useState<Record<string, boolean>>({});
 
   const loadStudents = async () => {
     const users = await getStudentUsers();
@@ -26,14 +27,26 @@ const StudentManager = ({ onBack }: Props) => {
     try {
       const newPwd = await resetStudentPassword(userId);
       await loadStudents();
-      toast({ title: "✅ Password Reset", description: `New password: ${newPwd}` });
+      setResetPasswords(prev => ({ ...prev, [userId]: newPwd }));
+      toast({ title: "✅ Password Reset", description: "Copy the new password below and share it with the student." });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
   };
 
-  const toggleShowPassword = (id: string) => {
-    setShowPasswords(prev => ({ ...prev, [id]: !prev[id] }));
+  const handleCopy = (userId: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(prev => ({ ...prev, [userId]: true }));
+    toast({ title: "📋 Copied!", description: "Password copied to clipboard." });
+    setTimeout(() => setCopied(prev => ({ ...prev, [userId]: false })), 2000);
+  };
+
+  const dismissPassword = (userId: string) => {
+    setResetPasswords(prev => {
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
   };
 
   return (
@@ -80,7 +93,7 @@ const StudentManager = ({ onBack }: Props) => {
                         onClick={() => handleReset(student.id)}
                         className="text-neon-cyan hover:text-neon-cyan/80 font-display text-xs tracking-wider"
                       >
-                        <RotateCcw className="mr-1 h-3 w-3" /> RESET
+                        <RotateCcw className="mr-1 h-3 w-3" /> RESET PASSWORD
                       </Button>
                     </div>
 
@@ -91,12 +104,38 @@ const StudentManager = ({ onBack }: Props) => {
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-muted-foreground font-display tracking-wider">PASS:</span>
-                        <span className="font-mono">{showPasswords[student.id] ? student.password : "••••••••"}</span>
-                        <button onClick={() => toggleShowPassword(student.id)} className="text-muted-foreground hover:text-foreground">
-                          {showPasswords[student.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                        </button>
+                        <span className="font-mono text-muted-foreground">••••••••</span>
                       </div>
                     </div>
+
+                    {resetPasswords[student.id] && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        className="mt-3 p-3 rounded-lg bg-neon-green/5 border border-neon-green/20"
+                      >
+                        <p className="text-xs text-neon-green font-display tracking-wider mb-2">⚠️ NEW PASSWORD — COPY NOW</p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 bg-muted/30 px-3 py-2 rounded-lg font-mono text-sm text-foreground select-all">
+                            {resetPasswords[student.id]}
+                          </code>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleCopy(student.id, resetPasswords[student.id])}
+                            className="text-neon-green hover:text-neon-green/80 shrink-0"
+                          >
+                            {copied[student.id] ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                        <button
+                          onClick={() => dismissPassword(student.id)}
+                          className="text-xs text-muted-foreground hover:text-foreground mt-2 font-display tracking-wider"
+                        >
+                          DISMISS
+                        </button>
+                      </motion.div>
+                    )}
                   </div>
                 </motion.div>
               ))}
@@ -108,7 +147,7 @@ const StudentManager = ({ onBack }: Props) => {
               <Lock className="h-3 w-3 text-neon-purple" />
               <span className="font-display tracking-wider text-neon-purple">NOTE</span>
             </div>
-            <p>Student accounts are auto-created when you register a certificate. Username = roll number (lowercase). Passwords are auto-generated. Click RESET to regenerate a new password instantly.</p>
+            <p>Student accounts are auto-created when you register a certificate. Username & default password = roll number (lowercase). Click RESET PASSWORD to generate a new password — copy it immediately and share with the student.</p>
           </div>
         </div>
       </div>

@@ -123,7 +123,7 @@ export async function addStudentUser(name: string, rollNumber: string): Promise<
       rollNumber: existing.roll_number || undefined,
     };
   }
-  const defaultPassword = generatePassword();
+  const defaultPassword = rollNumber.toLowerCase();
   const hashedDefaultPassword = await hashPassword(defaultPassword);
   const { data, error } = await supabase
     .from("app_users")
