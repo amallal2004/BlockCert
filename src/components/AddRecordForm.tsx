@@ -8,11 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { generateSHA512Hash, generateMockTxHash } from "@/lib/crypto";
 import { addCertificate } from "@/lib/blockchain";
-import { addRecord, addStudentUser } from "@/lib/database";
+import { addRecord, addStudentUser, getDepartments } from "@/lib/database";
 import { StudentRecord } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-
-const DEPARTMENTS = ["Computer Science", "Electronics", "Mechanical", "Civil", "Electrical", "Information Technology", "Chemical", "Biotechnology"];
 
 interface Props {
   onBack: () => void;
@@ -20,6 +18,7 @@ interface Props {
 
 const AddRecordForm = ({ onBack }: Props) => {
   const { toast } = useToast();
+  const departments = getDepartments();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<StudentRecord | null>(null);
   const qrRef = useRef<HTMLDivElement>(null);
@@ -166,7 +165,7 @@ const AddRecordForm = ({ onBack }: Props) => {
                 <Label className="font-display text-xs tracking-wider text-muted-foreground">DEPARTMENT</Label>
                 <Select value={form.department} onValueChange={v => setForm(f => ({ ...f, department: v }))}>
                   <SelectTrigger className={inputClass}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent className="bg-card border-border">{DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                  <SelectContent className="bg-card border-border">{departments.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
