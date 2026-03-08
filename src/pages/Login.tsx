@@ -18,18 +18,18 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const isAdmin = role === "admin";
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const success = login(username, password);
     if (success) {
       toast({ title: "Access Granted", description: "Authenticated successfully." });
-      navigate(role === "admin" ? "/admin" : "/student");
+      navigate(isAdmin ? "/admin" : "/student");
     } else {
       toast({ title: "Access Denied", description: isAdmin ? "Invalid admin credentials. Check username and password." : "Invalid credentials. Contact your admin for login details.", variant: "destructive" });
     }
   };
-
-  const isAdmin = role === "admin";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background cyber-grid relative p-4">
