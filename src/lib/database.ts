@@ -2,6 +2,8 @@ import { StudentRecord, User } from "./types";
 
 const RECORDS_KEY = "student_records";
 const DEPARTMENTS_KEY = "departments";
+const USERS_KEY = "app_users";
+const PASSWORDS_KEY = "user_passwords";
 
 const DEFAULT_DEPARTMENTS = [
   "Computer Science",
@@ -13,13 +15,12 @@ const DEFAULT_DEPARTMENTS = [
   "Chemical",
   "Biotechnology",
 ];
-const USERS_KEY = "app_users";
 
 // Demo credentials
 const DEFAULT_USERS: User[] = [
-  { id: "admin-1", username: "admin", role: "admin", name: "University Admin" },
-  { id: "student-1", username: "student1", role: "student", name: "Rahul Sharma", rollNumber: "CS2024001" },
-  { id: "student-2", username: "student2", role: "student", name: "Priya Patel", rollNumber: "EC2024002" },
+  { id: "admin-1", username: "admin", password: "admin123", role: "admin", name: "University Admin" },
+  { id: "student-1", username: "cs2024001", password: "cs2024001", role: "student", name: "Rahul Sharma", rollNumber: "CS2024001" },
+  { id: "student-2", username: "ec2024002", password: "ec2024002", role: "student", name: "Priya Patel", rollNumber: "EC2024002" },
 ];
 
 export function initializeDatabase(): void {
@@ -66,17 +67,36 @@ export function isDepartmentInUse(name: string): boolean {
   return getRecords().some(r => r.department === name);
 }
 
+// --- User Management ---
+
 export function getUsers(): User[] {
   return JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
 }
 
+export function getStudentUsers(): User[] {
+  return getUsers().filter(u => u.role === "student");
+}
+
 export function authenticateUser(username: string, password: string): User | null {
   const users = getUsers();
-  // Demo: password is same as username
-  const user = users.find(u => u.username === username);
-  if (user && password === username) return user;
+  const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+  if (user && user.password === password) return user;
   return null;
 }
+
+export function resetStudentPassword(userId: string, newPassword: string): void {
+  if (!newPassword || newPassword.length < 4) {
+    throw new Error("Password must be at least 4 characters");
+  }
+  const users = getUsers();
+  const user = users.find(u => u.id === userId);
+  if (!user) throw new Error("User not found");
+  if (user.role !== "student") throw new Error("Can only reset student passwords");
+  user.password = newPassword;
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+}
+
+// --- Record Management ---
 
 export function getRecords(): StudentRecord[] {
   return JSON.parse(localStorage.getItem(RECORDS_KEY) || "[]");
@@ -103,9 +123,12 @@ export function addStudentUser(name: string, rollNumber: string): User {
   const users = getUsers();
   const username = rollNumber.toLowerCase();
   if (users.some(u => u.username === username)) return users.find(u => u.username === username)!;
+  // Default password is the roll number (lowercase)
+  const defaultPassword = username;
   const newUser: User = {
     id: `student-${Date.now()}`,
     username,
+    password: defaultPassword,
     role: "student",
     name,
     rollNumber,
