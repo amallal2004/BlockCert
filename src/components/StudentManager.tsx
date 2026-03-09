@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Users, RotateCcw, Lock, Copy, Check } from "lucide-react";
+import { ArrowLeft, Users, RotateCcw, Lock, Copy, Check, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getStudentUsers, resetStudentPassword } from "@/lib/database";
 import { useToast } from "@/hooks/use-toast";
