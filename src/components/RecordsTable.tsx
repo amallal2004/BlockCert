@@ -1,4 +1,5 @@
-import { ArrowLeft, Copy, Hexagon } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, Copy, Hexagon, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StudentRecord } from "@/lib/types";
@@ -11,6 +12,8 @@ interface Props {
 
 const RecordsTable = ({ records, onBack }: Props) => {
   const { toast } = useToast();
+  const [searchTerm, setSearchTerm] = useState("");
+  
   const copyHash = (hash: string) => {
     navigator.clipboard.writeText(hash);
     toast({ title: "Copied", description: "Hash copied to clipboard" });
