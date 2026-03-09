@@ -35,26 +35,54 @@ const RecordsTable = ({ records, onBack }: Props) => {
               <p className="text-xs text-muted-foreground">{records.length} records on-chain</p>
             </div>
           </div>
-          <div className="p-4">
-            {records.length === 0 ? (
-              <p className="text-center text-muted-foreground py-12 text-sm">No records found.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-border/20 hover:bg-transparent">
-                      <TableHead className="font-display text-xs tracking-wider text-muted-foreground">STUDENT</TableHead>
-                      <TableHead className="font-display text-xs tracking-wider text-muted-foreground">ROLL NO</TableHead>
-                      <TableHead className="font-display text-xs tracking-wider text-muted-foreground">DEPT</TableHead>
-                      <TableHead className="font-display text-xs tracking-wider text-muted-foreground">YEAR</TableHead>
-                      <TableHead className="font-display text-xs tracking-wider text-muted-foreground">MARKS</TableHead>
-                      <TableHead className="font-display text-xs tracking-wider text-muted-foreground">HASH</TableHead>
-                      <TableHead className="font-display text-xs tracking-wider text-muted-foreground">TX HASH</TableHead>
-                      <TableHead className="font-display text-xs tracking-wider text-muted-foreground">STATUS</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {records.map(r => (
+           <div className="p-4">
+             {(() => {
+               const filteredRecords = records.filter(r =>
+                 r.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                 r.rollNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                 r.department.toLowerCase().includes(searchTerm.toLowerCase())
+               );
+ 
+             if (filteredRecords.length === 0 && records.length === 0) {
+               return (
+                 <p className="text-center text-muted-foreground py-12 text-sm">No records found.</p>
+               );
+             }
+
+             if (filteredRecords.length === 0) {
+               return (
+                 <p className="text-center text-muted-foreground py-12 text-sm">No records match your search.</p>
+               );
+             }
+
+            return (
+              <>
+                <div className="mb-4 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search by name, roll number, or department..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-muted/20 border border-border/30 focus:border-neon-cyan/50 focus:outline-none focus:ring-1 focus:ring-neon-cyan/30 text-sm transition-colors"
+                  />
+                </div>
+               <div className="overflow-x-auto">
+                 <Table>
+                   <TableHeader>
+                     <TableRow className="border-border/20 hover:bg-transparent">
+                       <TableHead className="font-display text-xs tracking-wider text-muted-foreground">STUDENT</TableHead>
+                       <TableHead className="font-display text-xs tracking-wider text-muted-foreground">ROLL NO</TableHead>
+                       <TableHead className="font-display text-xs tracking-wider text-muted-foreground">DEPT</TableHead>
+                       <TableHead className="font-display text-xs tracking-wider text-muted-foreground">YEAR</TableHead>
+                       <TableHead className="font-display text-xs tracking-wider text-muted-foreground">MARKS</TableHead>
+                       <TableHead className="font-display text-xs tracking-wider text-muted-foreground">HASH</TableHead>
+                       <TableHead className="font-display text-xs tracking-wider text-muted-foreground">TX HASH</TableHead>
+                       <TableHead className="font-display text-xs tracking-wider text-muted-foreground">STATUS</TableHead>
+                     </TableRow>
+                   </TableHeader>
+                   <TableBody>
+                     {filteredRecords.map(r => (
                       <TableRow key={r.id} className="border-border/10 hover:bg-muted/10">
                         <TableCell className="font-semibold">{r.studentName}</TableCell>
                         <TableCell className="font-mono text-xs">{r.rollNumber}</TableCell>
