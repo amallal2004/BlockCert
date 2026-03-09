@@ -15,6 +15,7 @@ const StudentManager = ({ onBack }: Props) => {
   const [students, setStudents] = useState<User[]>([]);
   const [resetPasswords, setResetPasswords] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState<Record<string, boolean>>({});
+  const [searchTerm, setSearchTerm] = useState("");
 
   const loadStudents = async () => {
     const users = await getStudentUsers();
