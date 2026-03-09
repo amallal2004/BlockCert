@@ -68,7 +68,25 @@ const StudentManager = ({ onBack }: Props) => {
             </div>
           </div>
 
-          {students.length === 0 ? (
+          <div className="mb-6 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search by name or roll number..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-muted/20 border border-border/30 focus:border-neon-cyan/50 focus:outline-none focus:ring-1 focus:ring-neon-cyan/30 text-sm transition-colors"
+            />
+          </div>
+
+          {(() => {
+            const filteredStudents = students.filter(
+              (s) =>
+                s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                s.rollNumber.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+            return (<>
+
             <div className="text-center py-12">
               <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground/20" />
               <p className="text-muted-foreground text-sm">No student accounts yet. They are created when you register a certificate.</p>
