@@ -74,7 +74,8 @@ export async function getStudentUsers(): Promise<User[]> {
   const { data, error } = await supabase
     .from("app_users")
     .select("*")
-    .eq("role", "student");
+    .eq("role", "student")
+    .order("name");
   if (error) return [];
   return (data || []).map(d => ({
     id: d.id,
