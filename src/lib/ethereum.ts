@@ -1,7 +1,7 @@
 import { BrowserProvider, Contract, JsonRpcProvider } from "ethers";
 
 // ⚠️ REPLACE THIS with your deployed contract address on Sepolia
-const CONTRACT_ADDRESS = "0x9bBA5d5a15A74a3a871A63Bbfc2470E548859635";
+const CONTRACT_ADDRESS = "0xe5a4063430c194CAe363C0f5554d3B7028609EDd";
 
 const SEPOLIA_CHAIN_ID = "0xaa36a7"; // 11155111
 
@@ -78,7 +78,7 @@ export async function connectWallet(): Promise<{ address: string; provider: Brow
 
   const provider = new BrowserProvider(ethereum);
   const accounts = await provider.send("eth_requestAccounts", []);
-  
+
   if (!accounts || accounts.length === 0) {
     throw new Error("No accounts found. Please unlock MetaMask.");
   }
