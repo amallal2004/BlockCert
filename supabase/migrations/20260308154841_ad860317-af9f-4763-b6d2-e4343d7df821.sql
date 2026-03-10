@@ -76,4 +76,4 @@ CREATE POLICY "Anyone can update app users"
 
 -- Seed admin user (password: admin123)
 INSERT INTO public.app_users (username, password_hash, role, name)
-VALUES ('admin', 'admin123', 'admin', 'University Admin');
+VALUES ('admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'admin', 'University Admin');
