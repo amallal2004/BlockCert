@@ -1,17 +1,54 @@
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Loader2, CheckCircle, Download, Hash, Blocks, Hexagon, Wallet, ExternalLink } from "lucide-react";
+import { ArrowLeft, Loader2, CheckCircle, Download, Hash, Blocks, Hexagon, Wallet, ExternalLink, UploadCloud, Copy } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { generateSHA512Hash } from "@/lib/crypto";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { generateSHA512Hash, computeFileHash } from "@/lib/crypto";
 import { addCertificate } from "@/lib/blockchain";
-import { addRecord, addStudentUser, getDepartments } from "@/lib/database";
+import { addRecord, addStudentUser, getDepartments, resetStudentPassword } from "@/lib/database";
 import { StudentRecord } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { connectWallet, isMetaMaskInstalled, getEtherscanTxUrl } from "@/lib/ethereum";
+import { uploadCertificate, uploadPhoto } from "@/lib/storage";
+
+const MAX_CERTIFICATE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_PHOTO_SIZE = 2 * 1024 * 1024; // 2MB
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png"];
+const ACCEPTED_CERT_TYPES = ["application/pdf", ...ACCEPTED_IMAGE_TYPES];
+
+const formSchema = z.object({
+  studentName: z.string().min(1, "Student name is required"),
+  rollNumber: z.string().min(1, "Roll number is required"),
+  department: z.string().min(1, "Department is required"),
+  academicYear: z.string().min(1, "Academic year is required"),
+  dateOfJoining: z.string().min(1, "Date of joining is required"),
+  dateOfCompletion: z.string().min(1, "Date of completion is required"),
+  totalMarks: z.coerce.number().min(0).max(100, "Marks cannot exceed 100"),
+  cgpa: z.coerce.number().min(0).max(10, "CGPA cannot exceed 10.0"),
+  certificateFile: z
+    .custom<FileList>()
+    .refine((files) => files?.length === 1, "Certificate file is required.")
+    .refine((files) => files?.[0]?.size <= MAX_CERTIFICATE_SIZE, `Max file size is 10MB.`)
+    .refine(
+      (files) => ACCEPTED_CERT_TYPES.includes(files?.[0]?.type),
+      "Only .pdf, .jpg, .jpeg, and .png formats are supported."
+    ),
+  photoFile: z
+    .custom<FileList>()
+    .refine((files) => files?.length === 1, "Student photo is required.")
+    .refine((files) => files?.[0]?.size <= MAX_PHOTO_SIZE, `Max file size is 2MB.`)
+    .refine(
+      (files) => ACCEPTED_IMAGE_TYPES.includes(files?.[0]?.type),
+      "Only .jpg, .jpeg, and .png formats are supported."
+    ),
+});
 
 interface Props {
   onBack: () => void;
@@ -21,17 +58,24 @@ const AddRecordForm = ({ onBack }: Props) => {
   const { toast } = useToast();
   const [departments, setDepartments] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState("");
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [result, setResult] = useState<StudentRecord | null>(null);
+  const [studentPassword, setStudentPassword] = useState<string | null>(null);
   const qrRef = useRef<HTMLDivElement>(null);
-  const [form, setForm] = useState({
-    studentName: "",
-    rollNumber: "",
-    department: "",
-    academicYear: "",
-    dateOfJoining: "",
-    dateOfCompletion: "",
-    totalMarks: "",
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      studentName: "",
+      rollNumber: "",
+      department: "",
+      academicYear: "",
+      dateOfJoining: "",
+      dateOfCompletion: "",
+      totalMarks: undefined,
+      cgpa: undefined,
+    },
   });
 
   const metaMaskInstalled = isMetaMaskInstalled();
@@ -50,34 +94,78 @@ const AddRecordForm = ({ onBack }: Props) => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setLoading(true);
+    setLoadingStatus("Starting upload...");
+    
     try {
-      const marks = parseFloat(form.totalMarks);
-      const hash = await generateSHA512Hash({ ...form, totalMarks: marks });
-      const verifyUrl = `${window.location.origin}/verify?hash=${hash}`;
+      const { certificateFile, photoFile, ...textData } = values;
+      const cert = certificateFile[0];
+      const photo = photoFile[0];
 
-      // Only the hash goes to blockchain — no personal data
-      const blockchainEntry = await addCertificate(hash);
+      // 1. Upload files
+      setLoadingStatus("Uploading certificate...");
+      const certPath = await uploadCertificate(cert, textData.rollNumber);
+      setLoadingStatus("Uploading photo...");
+      const photoPath = await uploadPhoto(photo, textData.rollNumber);
 
+      // 2. Compute file hashes
+      setLoadingStatus("Computing file hashes...");
+      const certHash = await computeFileHash(cert);
+      const photoHash = await computeFileHash(photo);
+
+      // 3. Compute master hash
+      setLoadingStatus("Computing master hash...");
+      const masterHash = await generateSHA512Hash({
+        studentName: textData.studentName,
+        rollNumber: textData.rollNumber,
+        department: textData.department,
+        academicYear: textData.academicYear,
+        dateOfJoining: textData.dateOfJoining,
+        dateOfCompletion: textData.dateOfCompletion,
+        totalMarks: textData.totalMarks,
+        cgpa: textData.cgpa,
+        certificateFileHash: certHash,
+        photoHash: photoHash,
+      });
+
+      const verifyUrl = `${window.location.origin}/verify?hash=${masterHash}`;
+
+      // 4. Register on blockchain
+      setLoadingStatus("Waiting for wallet approval...");
+      const blockchainEntry = await addCertificate(masterHash);
+
+      // 5. Insert record to Supabase
+      setLoadingStatus("Saving to database...");
       const record: StudentRecord = {
         id: crypto.randomUUID(),
-        studentName: form.studentName,
-        rollNumber: form.rollNumber,
-        department: form.department,
-        academicYear: form.academicYear,
-        dateOfJoining: form.dateOfJoining,
-        dateOfCompletion: form.dateOfCompletion,
-        totalMarks: marks,
-        certificateHash: hash,
+        studentName: textData.studentName,
+        rollNumber: textData.rollNumber,
+        department: textData.department,
+        academicYear: textData.academicYear,
+        dateOfJoining: textData.dateOfJoining,
+        dateOfCompletion: textData.dateOfCompletion,
+        totalMarks: textData.totalMarks,
+        cgpa: textData.cgpa,
+        certificateFilePath: certPath,
+        photoPath: photoPath,
+        certificateFileHash: certHash,
+        photoHash: photoHash,
+        certificateHash: masterHash,
         blockchainTxHash: blockchainEntry.txHash,
         qrCodeData: verifyUrl,
         createdAt: new Date().toISOString(),
         status: "registered",
       };
       await addRecord(record);
-      await addStudentUser(form.studentName, form.rollNumber);
+
+      // 6. Create Student user account
+      setLoadingStatus("Creating student account...");
+      const studentCode = textData.rollNumber.toLowerCase();
+      const user = await addStudentUser(textData.studentName, studentCode);
+      // Default password is the roll number (lowercase)
+      setStudentPassword(studentCode);
+
       setResult(record);
       toast({
         title: "✅ Certificate Registered",
@@ -87,6 +175,14 @@ const AddRecordForm = ({ onBack }: Props) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setLoading(false);
+      setLoadingStatus("");
+    }
+  };
+
+  const copyCredentials = () => {
+    if (result && studentPassword) {
+      navigator.clipboard.writeText(`Email: ${result.rollNumber.toLowerCase()}@blockcert.edu\nPassword: ${studentPassword}`);
+      toast({ title: "Copied credentials" });
     }
   };
 
@@ -122,6 +218,7 @@ const AddRecordForm = ({ onBack }: Props) => {
                   { label: "ROLL NO", value: result.rollNumber },
                   { label: "DEPARTMENT", value: result.department },
                   { label: "MARKS", value: `${result.totalMarks}%` },
+                  { label: "CGPA", value: result.cgpa },
                 ].map((item, i) => (
                   <div key={i} className="bg-muted/20 rounded-xl p-3 border border-border/20">
                     <p className="text-muted-foreground text-xs font-display tracking-wider">{item.label}</p>
@@ -129,6 +226,22 @@ const AddRecordForm = ({ onBack }: Props) => {
                   </div>
                 ))}
               </div>
+
+              {studentPassword && (
+                <div className="mb-6 p-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10">
+                   <div className="flex justify-between items-center mb-2">
+                     <h3 className="text-yellow-500 font-display tracking-wider text-xs">STUDENT CREDENTIALS (ONE-TIME VIEW)</h3>
+                     <Button size="sm" variant="ghost" className="h-6 px-2 text-yellow-500 hover:text-yellow-400 hover:bg-yellow-500/20" onClick={copyCredentials}>
+                       <Copy className="h-3 w-3 mr-1"/> Copy
+                     </Button>
+                   </div>
+                   <div className="grid grid-cols-2 gap-2 text-sm font-mono mt-2">
+                     <div className="text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">Email: <span className="text-foreground">{result.rollNumber.toLowerCase()}@blockcert.edu</span></div>
+                     <div className="text-muted-foreground">Password: <span className="text-foreground">{studentPassword}</span></div>
+                   </div>
+                   <p className="text-[10px] text-yellow-500/70 mt-2">Please copy and securely share these credentials with the student.</p>
+                </div>
+              )}
 
               <div className="space-y-3 mb-6">
                 <div className="p-4 rounded-xl bg-muted/20 border border-neon-cyan/10">
@@ -172,15 +285,16 @@ const AddRecordForm = ({ onBack }: Props) => {
     );
   }
 
-  const inputClass = "bg-muted/30 border-border/50 h-12 font-mono text-sm focus:border-primary focus:ring-primary/20";
+  const inputClass = "bg-muted/30 border-border/50 h-12 font-mono text-sm focus:border-primary focus:ring-primary/20 transition-all";
+  const fileInputClass = "flex h-12 w-full rounded-md border border-input bg-muted/30 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer hover:bg-muted/50 transition-colors file:mr-4 file:py-1 file:px-3 file:rounded-full file:bg-primary/10 file:text-primary";
 
   return (
     <div className="min-h-screen bg-background cyber-grid p-4">
-      <div className="container mx-auto max-w-2xl">
+      <div className="container mx-auto max-w-3xl">
         <Button variant="ghost" onClick={onBack} className="mb-4 text-muted-foreground hover:text-foreground">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
-        <div className="glass-card rounded-2xl p-8 neon-border-cyan">
+        <div className="glass-card rounded-2xl p-8 neon-border-cyan shadow-xl">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3">
               <div className="h-12 w-12 rounded-xl btn-neon-cyan flex items-center justify-center">
@@ -195,7 +309,7 @@ const AddRecordForm = ({ onBack }: Props) => {
             {metaMaskInstalled && (
               <div>
                 {walletAddress ? (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neon-green/10 border border-neon-green/20 text-xs">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neon-green/10 border border-neon-green/20 text-xs shadow-[0_0_10px_rgba(0,255,128,0.1)]">
                     <Wallet className="h-3 w-3 text-neon-green" />
                     <span className="font-mono text-neon-green">
                       {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
@@ -222,56 +336,138 @@ const AddRecordForm = ({ onBack }: Props) => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="font-display text-xs tracking-wider text-muted-foreground">STUDENT NAME</Label>
-                <Input required value={form.studentName} onChange={e => setForm(f => ({ ...f, studentName: e.target.value }))} placeholder="Full name" className={inputClass} />
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              
+              <div className="space-y-4">
+                <h3 className="text-xs font-display text-muted-foreground uppercase tracking-widest border-b border-border/50 pb-2">Student Details</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField control={form.control} name="studentName" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="font-display text-xs tracking-wider text-muted-foreground">STUDENT NAME</FormLabel>
+                      <FormControl><Input placeholder="Full name" className={inputClass} {...field} /></FormControl>
+                      <FormMessage className="text-xs"/>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="rollNumber" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="font-display text-xs tracking-wider text-muted-foreground">ROLL NUMBER</FormLabel>
+                      <FormControl><Input placeholder="CS2024001" className={inputClass} {...field} /></FormControl>
+                      <FormMessage className="text-xs"/>
+                    </FormItem>
+                  )} />
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField control={form.control} name="department" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="font-display text-xs tracking-wider text-muted-foreground">DEPARTMENT</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl><SelectTrigger className={inputClass}><SelectValue placeholder="Select" /></SelectTrigger></FormControl>
+                        <SelectContent className="bg-card border-border">
+                          {departments.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage className="text-xs"/>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="academicYear" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="font-display text-xs tracking-wider text-muted-foreground">ACADEMIC YEAR</FormLabel>
+                      <FormControl><Input placeholder="2020-2024" className={inputClass} {...field} /></FormControl>
+                      <FormMessage className="text-xs"/>
+                    </FormItem>
+                  )} />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label className="font-display text-xs tracking-wider text-muted-foreground">ROLL NUMBER</Label>
-                <Input required value={form.rollNumber} onChange={e => setForm(f => ({ ...f, rollNumber: e.target.value }))} placeholder="CS2024001" className={inputClass} />
+
+              <div className="space-y-4">
+                <h3 className="text-xs font-display text-muted-foreground uppercase tracking-widest border-b border-border/50 pb-2">Academic & Dates</h3>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField control={form.control} name="dateOfJoining" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="font-display text-xs tracking-wider text-muted-foreground">DATE OF JOINING</FormLabel>
+                      <FormControl><Input type="date" className={inputClass} {...field} /></FormControl>
+                      <FormMessage className="text-xs"/>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="dateOfCompletion" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="font-display text-xs tracking-wider text-muted-foreground">DATE OF COMPLETION</FormLabel>
+                      <FormControl><Input type="date" className={inputClass} {...field} /></FormControl>
+                      <FormMessage className="text-xs"/>
+                    </FormItem>
+                  )} />
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField control={form.control} name="totalMarks" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="font-display text-xs tracking-wider text-muted-foreground">TOTAL MARKS (%)</FormLabel>
+                      <FormControl><Input type="number" min={0} max={100} step={0.01} placeholder="85.5" className={inputClass} {...field} /></FormControl>
+                      <FormMessage className="text-xs"/>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="cgpa" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="font-display text-xs tracking-wider text-muted-foreground">CGPA</FormLabel>
+                      <FormControl><Input type="number" min={0} max={10} step={0.01} placeholder="8.75" className={inputClass} {...field} /></FormControl>
+                      <FormMessage className="text-xs"/>
+                    </FormItem>
+                  )} />
+                </div>
               </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="font-display text-xs tracking-wider text-muted-foreground">DEPARTMENT</Label>
-                <Select value={form.department} onValueChange={v => setForm(f => ({ ...f, department: v }))}>
-                  <SelectTrigger className={inputClass}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent className="bg-card border-border">{departments.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
-                </Select>
+
+              <div className="space-y-4">
+                <h3 className="text-xs font-display text-muted-foreground uppercase tracking-widest border-b border-border/50 pb-2 flex items-center gap-2">
+                  <UploadCloud className="w-4 h-4"/> Document Uploads
+                </h3>
+                
+                <FormField control={form.control} name="certificateFile" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-display text-xs tracking-wider text-muted-foreground">DEGREE CERTIFICATE (PDF/IMAGE, MAX 10MB)</FormLabel>
+                    <FormControl>
+                      <Input type="file" accept=".pdf,image/jpeg,image/png,image/jpg" className={fileInputClass}
+                        {...form.register("certificateFile")} 
+                      />
+                    </FormControl>
+                    <FormMessage className="text-xs"/>
+                  </FormItem>
+                )} />
+                
+                <FormField control={form.control} name="photoFile" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-display text-xs tracking-wider text-muted-foreground">STUDENT PHOTO (JPG/PNG, MAX 2MB)</FormLabel>
+                    <FormControl>
+                      <Input type="file" accept="image/jpeg,image/png,image/jpg" className={fileInputClass}
+                        {...form.register("photoFile")} 
+                      />
+                    </FormControl>
+                    <FormMessage className="text-xs"/>
+                  </FormItem>
+                )} />
               </div>
-              <div className="space-y-2">
-                <Label className="font-display text-xs tracking-wider text-muted-foreground">ACADEMIC YEAR</Label>
-                <Input required value={form.academicYear} onChange={e => setForm(f => ({ ...f, academicYear: e.target.value }))} placeholder="2020-2024" className={inputClass} />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="font-display text-xs tracking-wider text-muted-foreground">DATE OF JOINING</Label>
-                <Input type="date" required value={form.dateOfJoining} onChange={e => setForm(f => ({ ...f, dateOfJoining: e.target.value }))} className={inputClass} />
-              </div>
-              <div className="space-y-2">
-                <Label className="font-display text-xs tracking-wider text-muted-foreground">DATE OF COMPLETION</Label>
-                <Input type="date" required value={form.dateOfCompletion} onChange={e => setForm(f => ({ ...f, dateOfCompletion: e.target.value }))} className={inputClass} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="font-display text-xs tracking-wider text-muted-foreground">TOTAL MARKS (%)</Label>
-              <Input type="number" required min={0} max={100} step={0.01} value={form.totalMarks} onChange={e => setForm(f => ({ ...f, totalMarks: e.target.value }))} placeholder="85.5" className={inputClass} />
-            </div>
-            <Button
-              type="submit"
-              className="w-full btn-neon-cyan border-0 h-12 font-display tracking-wider text-sm rounded-xl"
-              disabled={loading || !form.department || !metaMaskInstalled || !walletAddress}
-            >
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Blocks className="mr-2 h-4 w-4" />}
-              {loading ? "REGISTERING ON SEPOLIA..." : "REGISTER ON SEPOLIA"}
-            </Button>
-            {metaMaskInstalled && !walletAddress && (
-              <p className="text-xs text-center text-muted-foreground">Connect your wallet first to register on-chain</p>
-            )}
-          </form>
+
+              <Button
+                type="submit"
+                className="w-full btn-neon-cyan border-0 h-14 font-display tracking-wider text-base rounded-xl mt-4 relative overflow-hidden group"
+                disabled={loading || !metaMaskInstalled || !walletAddress}
+              >
+                {loading && (
+                    <div className="absolute inset-0 bg-background/50 flex items-center justify-center backdrop-blur-sm z-10 transition-all">
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin text-neon-cyan" />
+                        <span className="text-sm font-semibold tracking-wider">{loadingStatus}</span>
+                    </div>
+                )}
+                <Blocks className="mr-2 h-5 w-5 group-hover:scale-110 transition-transform" />
+                REGISTER ON SEPOLIA
+              </Button>
+              {metaMaskInstalled && !walletAddress && (
+                <p className="text-xs text-center text-muted-foreground">Connect your wallet first to register on-chain</p>
+              )}
+            </form>
+          </Form>
         </div>
       </div>
     </div>

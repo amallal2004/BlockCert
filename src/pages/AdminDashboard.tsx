@@ -15,7 +15,7 @@ import { connectWallet, isMetaMaskInstalled, getEtherscanAddressUrl, getContract
 import { StudentRecord } from "@/lib/types";
 
 const AdminDashboard = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [view, setView] = useState<"dashboard" | "add" | "records" | "departments" | "students">("dashboard");
@@ -25,8 +25,8 @@ const AdminDashboard = () => {
   
 
   useEffect(() => {
-    if (!user || user.role !== "admin") navigate("/login?role=admin");
-  }, [user, navigate]);
+    if (!loading && (!user || user.role !== "admin")) navigate("/login?role=admin");
+  }, [user, loading, navigate]);
 
   useEffect(() => {
     getRecords().then(setRecords);
