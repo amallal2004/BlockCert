@@ -8,12 +8,36 @@ export async function generateSHA512Hash(data: {
   dateOfJoining: string;
   dateOfCompletion: string;
   totalMarks: number;
+  cgpa?: number;
+  certificateFileHash?: string;
+  photoHash?: string;
 }): Promise<string> {
-  const raw = `${data.studentName}|${data.rollNumber}|${data.department}|${data.academicYear}|${data.dateOfJoining}|${data.dateOfCompletion}|${data.totalMarks}|${UNIVERSITY_SECRET_SALT}`;
+  const salt = import.meta.env.VITE_UNIVERSITY_SALT || UNIVERSITY_SECRET_SALT;
+  
+  // Standardised order: studentName | rollNumber | department | academicYear | 
+  // dateOfJoining | dateOfCompletion | totalMarks | cgpa | 
+  // certificateFileHash | photoHash | UNIVERSITY_SECRET_SALT
+  
+  // Normalize optional values to string for concatenation
+  const cgpaStr = data.cgpa !== undefined ? data.cgpa.toString() : "";
+  const certHash = data.certificateFileHash || "";
+  const photoHash = data.photoHash || "";
+
+  const raw = `${data.studentName}|${data.rollNumber}|${data.department}|${data.academicYear}|${data.dateOfJoining}|${data.dateOfCompletion}|${data.totalMarks}|${cgpaStr}|${certHash}|${photoHash}|${salt}`;
   
   const encoder = new TextEncoder();
   const dataBuffer = encoder.encode(raw);
   const hashBuffer = await crypto.subtle.digest("SHA-512", dataBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Computes a SHA-512 hash of a File object using the Web Crypto API.
+ */
+export async function computeFileHash(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest("SHA-512", arrayBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
