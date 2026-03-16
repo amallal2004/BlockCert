@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Shield, GraduationCap, ArrowLeft, LogIn, Hexagon } from "lucide-react";
+import { Shield, GraduationCap, ArrowLeft, LogIn, Hexagon, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ const Login = () => {
   const role = searchParams.get("role") || "admin";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [loggingIn, setLoggingIn] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -22,12 +23,17 @@ const Login = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = await login(username, password);
-    if (success) {
-      toast({ title: "Access Granted", description: "Authenticated successfully." });
-      navigate(isAdmin ? "/admin" : "/student");
-    } else {
-      toast({ title: "Access Denied", description: isAdmin ? "Invalid admin credentials. Check username and password." : "Invalid credentials. Contact your admin for login details.", variant: "destructive" });
+    setLoggingIn(true);
+    try {
+      const success = await login(username, password);
+      if (success) {
+        toast({ title: "Access Granted", description: "Authenticated successfully." });
+        navigate(isAdmin ? "/admin" : "/student");
+      } else {
+        toast({ title: "Access Denied", description: isAdmin ? "Invalid admin credentials. Check username and password." : "Invalid credentials. Contact your admin for login details.", variant: "destructive" });
+      }
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -84,9 +90,9 @@ const Login = () => {
                 className="bg-muted/30 border-border/50 h-12 font-mono text-sm focus:border-primary focus:ring-primary/20"
               />
             </div>
-            <Button type="submit" className={`w-full h-12 border-0 font-display tracking-wider text-sm rounded-xl ${isAdmin ? "btn-neon-cyan" : "btn-neon-purple"}`}>
-              <LogIn className="mr-2 h-4 w-4" />
-              AUTHENTICATE
+            <Button type="submit" disabled={loggingIn} className={`w-full h-12 border-0 font-display tracking-wider text-sm rounded-xl ${isAdmin ? "btn-neon-cyan" : "btn-neon-purple"}`}>
+              {loggingIn ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
+              {loggingIn ? "AUTHENTICATING..." : "AUTHENTICATE"}
             </Button>
           </form>
 
