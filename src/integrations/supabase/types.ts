@@ -66,12 +66,17 @@ export type Database = {
         Row: {
           academic_year: string
           blockchain_tx_hash: string
+          certificate_file_hash: string | null
+          certificate_file_path: string | null
           certificate_hash: string
+          cgpa: number | null
           created_at: string
           date_of_completion: string
           date_of_joining: string
           department: string
           id: string
+          photo_hash: string | null
+          photo_path: string | null
           qr_code_data: string
           roll_number: string
           status: string
@@ -81,12 +86,17 @@ export type Database = {
         Insert: {
           academic_year: string
           blockchain_tx_hash?: string
+          certificate_file_hash?: string | null
+          certificate_file_path?: string | null
           certificate_hash: string
+          cgpa?: number | null
           created_at?: string
           date_of_completion: string
           date_of_joining: string
           department: string
           id?: string
+          photo_hash?: string | null
+          photo_path?: string | null
           qr_code_data?: string
           roll_number: string
           status?: string
@@ -96,12 +106,17 @@ export type Database = {
         Update: {
           academic_year?: string
           blockchain_tx_hash?: string
+          certificate_file_hash?: string | null
+          certificate_file_path?: string | null
           certificate_hash?: string
+          cgpa?: number | null
           created_at?: string
           date_of_completion?: string
           date_of_joining?: string
           department?: string
           id?: string
+          photo_hash?: string | null
+          photo_path?: string | null
           qr_code_data?: string
           roll_number?: string
           status?: string

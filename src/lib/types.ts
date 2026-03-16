@@ -7,6 +7,11 @@ export interface StudentRecord {
   dateOfJoining: string;
   dateOfCompletion: string;
   totalMarks: number;
+  cgpa?: number;
+  certificateFilePath?: string;
+  photoPath?: string;
+  certificateFileHash?: string;
+  photoHash?: string;
   certificateHash: string;
   blockchainTxHash: string;
   qrCodeData: string;
@@ -17,7 +22,6 @@ export interface StudentRecord {
 export interface User {
   id: string;
   username: string;
-  password: string;
   role: 'admin' | 'student';
   name: string;
   rollNumber?: string;
