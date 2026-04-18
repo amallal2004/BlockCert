@@ -15,6 +15,7 @@ interface ExtendedVerificationResult extends VerificationResult {
   photoUrl?: string;
   certificateUrl?: string;
   isTampered?: boolean;
+  isOnChainOnly?: boolean;
   tamperMessage?: string;
 }
 
@@ -64,15 +65,16 @@ const VerifyPortal = () => {
         });
       } else if (verification.exists) {
         setResult({
-          isValid: true,
+          isValid: false,
+          isOnChainOnly: true,
           timestamp: verification.timestamp,
           blockNumber: verification.blockNumber,
         });
       } else {
         setResult({ isValid: false });
       }
-    } catch (err: any) {
-      const msg = err?.message || "";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
       if (msg.includes("NETWORK_ERROR") || msg.includes("Failed to fetch") || msg.includes("failed to detect network")) {
         setNetworkError(true);
       } else {
@@ -305,6 +307,43 @@ const VerifyPortal = () => {
                     </p>
                     <div className="mt-6 p-4 rounded-xl bg-muted/20 border border-border/20 text-xs text-muted-foreground">
                       <p>The hash exists on the blockchain, but the current database record does not match. Someone may have modified the student data after it was originally registered.</p>
+                    </div>
+                  </div>
+                ) : result.isOnChainOnly ? (
+                  <div className="glass-card rounded-2xl p-8 text-center" style={{ border: "1px solid hsl(45, 85%, 55%, 0.3)", boxShadow: "0 0 30px hsl(45, 85%, 55%, 0.12)" }}>
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", bounce: 0.4 }}
+                      className="mx-auto mb-4 h-24 w-24 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: "hsl(45, 85%, 55%, 0.1)", border: "1px solid hsl(45, 85%, 55%, 0.3)" }}
+                    >
+                      <ShieldAlert className="h-12 w-12 text-yellow-400" />
+                    </motion.div>
+                    <h2 className="font-display text-3xl font-black tracking-wider text-yellow-400">ON-CHAIN ONLY</h2>
+                    <p className="text-muted-foreground text-sm mt-3 max-w-md mx-auto">
+                      This hash exists on the blockchain, but the full certificate record is currently unavailable in the secure database.
+                    </p>
+                    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                      <div className="bg-muted/20 rounded-xl p-3 border border-yellow-400/10 flex items-start gap-2 text-left">
+                        <Clock className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-muted-foreground text-[10px] font-display tracking-wider uppercase">REGISTERED</p>
+                          <p className="font-semibold text-sm leading-tight">
+                            {result.timestamp ? new Date(result.timestamp).toLocaleDateString() : "N/A"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-muted/20 rounded-xl p-3 border border-yellow-400/10 flex items-start gap-2 text-left">
+                        <Blocks className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-muted-foreground text-[10px] font-display tracking-wider uppercase">BLOCK</p>
+                          <p className="font-semibold text-sm leading-tight">{result.blockNumber ? `#${result.blockNumber}` : "N/A"}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-6 p-4 rounded-xl bg-muted/20 border border-border/20 text-xs text-muted-foreground">
+                      <p>This is not shown as a fully authentic certificate because the student details, photo, and certificate document could not be loaded.</p>
                     </div>
                   </div>
                 ) : (

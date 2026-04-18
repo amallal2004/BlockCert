@@ -11,12 +11,19 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateSHA512Hash, computeFileHash } from "@/lib/crypto";
-import { addCertificate } from "@/lib/blockchain";
-import { addRecord, addStudentUser, getDepartments, resetStudentPassword } from "@/lib/database";
+import { addCertificate, getCertificateRegistration } from "@/lib/blockchain";
+import {
+  addRecord,
+  addStudentUser,
+  deleteRecord,
+  deleteStudentUser,
+  getDepartments,
+  updateRecordBlockchainDetails,
+} from "@/lib/database";
 import { StudentRecord } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { connectWallet, isMetaMaskInstalled, getEtherscanTxUrl } from "@/lib/ethereum";
-import { uploadCertificate, uploadPhoto } from "@/lib/storage";
+import { deleteStoredFile, uploadCertificate, uploadPhoto } from "@/lib/storage";
 
 const MAX_CERTIFICATE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_PHOTO_SIZE = 2 * 1024 * 1024; // 2MB
@@ -54,6 +61,10 @@ interface Props {
   onBack: () => void;
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unexpected error";
+}
+
 const AddRecordForm = ({ onBack }: Props) => {
   const { toast } = useToast();
   const [departments, setDepartments] = useState<string[]>([]);
@@ -89,8 +100,8 @@ const AddRecordForm = ({ onBack }: Props) => {
       const { address } = await connectWallet();
       setWalletAddress(address);
       toast({ title: "✅ Wallet Connected", description: `${address.slice(0, 6)}...${address.slice(-4)}` });
-    } catch (err: any) {
-      toast({ title: "Wallet Error", description: err.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Wallet Error", description: getErrorMessage(error), variant: "destructive" });
     }
   };
 
@@ -98,27 +109,31 @@ const AddRecordForm = ({ onBack }: Props) => {
     setLoading(true);
     setLoadingStatus("Starting upload...");
     
+    let certificatePath: string | null = null;
+    let photoPath: string | null = null;
+    let provisionalRecord: StudentRecord | null = null;
+    let createdStudentId: string | null = null;
+    let studentWasCreated = false;
+    let blockchainRegistered = false;
+
     try {
       const { certificateFile, photoFile, ...textData } = values;
       const cert = certificateFile[0];
       const photo = photoFile[0];
+      const normalizedRollNumber = textData.rollNumber.trim();
+      const studentCode = normalizedRollNumber.toLowerCase();
+      const normalizedName = textData.studentName.trim();
 
-      // 1. Upload files
-      setLoadingStatus("Uploading certificate...");
-      const certPath = await uploadCertificate(cert, textData.rollNumber);
-      setLoadingStatus("Uploading photo...");
-      const photoPath = await uploadPhoto(photo, textData.rollNumber);
-
-      // 2. Compute file hashes
+      // 1. Compute file hashes before any remote side effects
       setLoadingStatus("Computing file hashes...");
       const certHash = await computeFileHash(cert);
       const photoHash = await computeFileHash(photo);
 
-      // 3. Compute master hash
+      // 2. Compute master hash
       setLoadingStatus("Computing master hash...");
       const masterHash = await generateSHA512Hash({
-        studentName: textData.studentName,
-        rollNumber: textData.rollNumber,
+        studentName: normalizedName,
+        rollNumber: normalizedRollNumber,
         department: textData.department,
         academicYear: textData.academicYear,
         dateOfJoining: textData.dateOfJoining,
@@ -131,38 +146,69 @@ const AddRecordForm = ({ onBack }: Props) => {
 
       const verifyUrl = `${window.location.origin}/verify?hash=${masterHash}`;
 
-      // 4. Register on blockchain
-      setLoadingStatus("Waiting for wallet approval...");
-      const blockchainEntry = await addCertificate(masterHash);
+      // 3. Create or repair the student auth user before touching the record table
+      setLoadingStatus("Creating student account...");
+      const { user, wasCreated } = await addStudentUser(normalizedName, normalizedRollNumber);
+      createdStudentId = user.id;
+      studentWasCreated = wasCreated;
 
-      // 5. Insert record to Supabase
+      // 4. Upload files only after account creation succeeds
+      setLoadingStatus("Uploading certificate...");
+      certificatePath = await uploadCertificate(cert, normalizedRollNumber);
+      setLoadingStatus("Uploading photo...");
+      photoPath = await uploadPhoto(photo, normalizedRollNumber);
+
+      // 5. Save a provisional DB row before the irreversible blockchain write
       setLoadingStatus("Saving to database...");
-      const record: StudentRecord = {
+      provisionalRecord = {
         id: crypto.randomUUID(),
-        studentName: textData.studentName,
-        rollNumber: textData.rollNumber,
+        studentName: normalizedName,
+        rollNumber: normalizedRollNumber,
         department: textData.department,
         academicYear: textData.academicYear,
         dateOfJoining: textData.dateOfJoining,
         dateOfCompletion: textData.dateOfCompletion,
         totalMarks: textData.totalMarks,
         cgpa: textData.cgpa,
-        certificateFilePath: certPath,
-        photoPath: photoPath,
+        certificateFilePath: certificatePath,
+        photoPath,
         certificateFileHash: certHash,
-        photoHash: photoHash,
+        photoHash,
         certificateHash: masterHash,
-        blockchainTxHash: blockchainEntry.txHash,
+        blockchainTxHash: "",
         qrCodeData: verifyUrl,
         createdAt: new Date().toISOString(),
         status: "registered",
       };
-      await addRecord(record);
+      await addRecord(provisionalRecord, user.id);
 
-      // 6. Create Student user account
-      setLoadingStatus("Creating student account...");
-      const studentCode = textData.rollNumber.toLowerCase();
-      const user = await addStudentUser(textData.studentName, studentCode);
+      // 6. Register on blockchain as the final irreversible step
+      setLoadingStatus("Checking blockchain...");
+      const existingOnChain = await getCertificateRegistration(masterHash);
+      const blockchainEntry = existingOnChain.exists
+        ? {
+            txHash: existingOnChain.txHash || "",
+            blockNumber: existingOnChain.blockNumber || 0,
+          }
+        : await (async () => {
+            setLoadingStatus("Waiting for wallet approval...");
+            return addCertificate(masterHash);
+          })();
+      blockchainRegistered = true;
+
+      if (!blockchainEntry.txHash) {
+        throw new Error("Certificate exists on-chain, but the original transaction hash could not be recovered");
+      }
+
+      // 7. Finalize the provisional DB row with the real transaction hash
+      setLoadingStatus("Finalizing registration...");
+      await updateRecordBlockchainDetails(provisionalRecord.id, blockchainEntry.txHash, verifyUrl);
+
+      const record: StudentRecord = {
+        ...provisionalRecord,
+        blockchainTxHash: blockchainEntry.txHash,
+      };
+
       // Default password is the roll number (lowercase)
       setStudentPassword(studentCode);
 
@@ -171,8 +217,48 @@ const AddRecordForm = ({ onBack }: Props) => {
         title: "✅ Certificate Registered",
         description: "Hash stored on Sepolia blockchain & database!",
       });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (error: unknown) {
+      const cleanupWarnings: string[] = [];
+
+      if (!blockchainRegistered) {
+        if (provisionalRecord) {
+          try {
+            await deleteRecord(provisionalRecord.id);
+          } catch (cleanupError: unknown) {
+            cleanupWarnings.push(`record cleanup failed: ${getErrorMessage(cleanupError)}`);
+          }
+        }
+
+        if (certificatePath) {
+          try {
+            await deleteStoredFile("certificates", certificatePath);
+          } catch (cleanupError: unknown) {
+            cleanupWarnings.push(`certificate cleanup failed: ${getErrorMessage(cleanupError)}`);
+          }
+        }
+
+        if (photoPath) {
+          try {
+            await deleteStoredFile("photos", photoPath);
+          } catch (cleanupError: unknown) {
+            cleanupWarnings.push(`photo cleanup failed: ${getErrorMessage(cleanupError)}`);
+          }
+        }
+
+        if (studentWasCreated && createdStudentId) {
+          try {
+            await deleteStudentUser(createdStudentId);
+          } catch (cleanupError: unknown) {
+            cleanupWarnings.push(`student account cleanup failed: ${getErrorMessage(cleanupError)}`);
+          }
+        }
+      }
+
+      const description = cleanupWarnings.length > 0
+        ? `${getErrorMessage(error)}. Cleanup warnings: ${cleanupWarnings.join("; ")}`
+        : getErrorMessage(error);
+
+      toast({ title: "Error", description, variant: "destructive" });
     } finally {
       setLoading(false);
       setLoadingStatus("");

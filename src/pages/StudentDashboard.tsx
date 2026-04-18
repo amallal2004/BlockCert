@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { GraduationCap, LogOut, Download, Hash, Blocks, CheckCircle, AlertTriangle, Hexagon, User, BookOpen, ExternalLink, FileText, Loader2 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { useAuth } from "@/contexts/AuthContext";
-import { getRecordByRollNumber } from "@/lib/database";
+import { getRecordForUser } from "@/lib/database";
 import { Button } from "@/components/ui/button";
 import { StudentRecord } from "@/lib/types";
 import { getSignedUrl } from "@/lib/storage";
@@ -27,8 +27,13 @@ const StudentDashboard = () => {
     if (!authLoading && (!user || user.role !== "student")) { navigate("/login?role=student"); return; }
     
     const fetchRecord = async () => {
+      if (!user) {
+        setLoaded(true);
+        return;
+      }
+
       try {
-        const r = await getRecordByRollNumber(user.rollNumber || "");
+        const r = await getRecordForUser(user.id);
         if (r) {
            let photoUrl = "";
            if (r.photoPath) {
@@ -45,7 +50,7 @@ const StudentDashboard = () => {
       }
     };
     fetchRecord();
-  }, [user, navigate]);
+  }, [authLoading, user, navigate]);
 
   if (authLoading || !user || user.role !== "student" || !loaded) return null;
 
@@ -164,7 +169,7 @@ const StudentDashboard = () => {
                   </div>
                   <div className="px-3 py-1.5 rounded-full bg-neon-green/10 border border-neon-green/30 flex items-center gap-1.5 shadow-[0_0_15px_rgba(0,255,128,0.15)]">
                      <div className="w-2 h-2 rounded-full bg-neon-green animate-pulse" />
-                     <span className="text-[10px] font-display tracking-widest text-neon-green font-bold uppercase">Verified On-Chain</span>
+                     <span className="text-[10px] font-display tracking-widest text-neon-green font-bold uppercase">Registered On-Chain</span>
                   </div>
                </div>
 
