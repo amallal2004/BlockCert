@@ -40,3 +40,24 @@ export interface VerificationResult {
   academicYear?: string;
   totalMarks?: number;
 }
+
+export interface VerifiedCertificateRecord {
+  studentName: string;
+  rollNumber: string;
+  department: string;
+  academicYear: string;
+  totalMarks: number;
+  cgpa?: number;
+  blockchainTxHash: string;
+  photoUrl?: string;
+  certificateUrl?: string;
+}
+
+export interface VerifyCertificateAccessResponse {
+  exists: boolean;
+  timestamp?: number;
+  blockNumber?: number;
+  isTampered?: boolean;
+  tamperMessage?: string;
+  record?: VerifiedCertificateRecord;
+}

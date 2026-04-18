@@ -25,3 +25,12 @@ export const supabaseAdmin = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLI
     autoRefreshToken: false,
   }
 });
+
+// A service-role client specifically to bypass the broken Edge Function
+const SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+export const supabaseService = createClient<Database>(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  }
+});

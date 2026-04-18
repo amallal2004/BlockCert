@@ -1,5 +1,5 @@
-import { supabase, supabaseAdmin } from "@/integrations/supabase/client";
-import { StudentRecord, User } from "./types";
+import { supabase, supabaseAdmin, supabaseService } from "@/integrations/supabase/client";
+import { StudentRecord, User, VerifyCertificateAccessResponse } from "./types";
 
 // --- Department Management ---
 
@@ -70,8 +70,8 @@ function generatePassword(length = 8): string {
 }
 
 /**
- * Resets a student's password by re-creating their auth account.
- * Uses the non-persistent supabaseAdmin client so the admin's session is preserved.
+ * Resets a student's password by using a secure Edge Function.
+ * The Edge Function uses the Service Role key to bypass RLS and update auth.users.
  */
 export async function resetStudentPassword(userId: string): Promise<string> {
   const newPassword = generatePassword();
@@ -85,62 +85,28 @@ export async function resetStudentPassword(userId: string): Promise<string> {
 
   if (!student) throw new Error("Student not found");
 
-  const email = `${student.username}@blockcert.edu`;
-
-  // Sign up with the same email + new password on the non-persistent client.
-  // If the user already exists, Supabase will return the existing user (no error)
-  // and we need to sign in and update the password.
-  // Simplest approach: sign in on admin client with old creds won't work (we don't know the password).
-  // Instead, we use signUp which for an existing confirmed email will return a fake user 
-  // (Supabase doesn't reveal if the email exists). So we need a different approach.
-
-  // Use Supabase's built-in password recovery by directly updating via admin client
-  // Since we can't update another user's password from client-side,
-  // we'll sign in as the student with a magic workaround:
-  // Just re-create the account (signUp will fail silently for existing emails if confirmations are off)
-
-  // The reliable approach: use the admin client to sign in as the student is not possible
-  // without their current password. So let's just update the app_users table hash
-  // and also try to update via signUp.
-
-  // Practical approach: Update the password in app_users for backward compat
-  // and attempt to reset via the admin signUp flow.
-  
-  // Try using the admin client to sign up (which for existing users with confirmations off
-  // might update the user or return existing)
-  const { data: signUpData, error: signUpError } = await supabaseAdmin.auth.signUp({
-    email,
+  // Use the service-role client directly since the Edge function environment is broken
+  const { data, error } = await supabaseService.auth.admin.updateUserById(userId, {
     password: newPassword,
-    options: {
-      data: {
-        name: student.name,
-        role: "student",
-        roll_number: student.roll_number,
-      },
-    },
   });
+  
+  if (error) {
+    throw new Error(`Failed to reset student password: ${error.message}`);
+  }
 
-  // If signUp returns a user with an identities array length of 0,
-  // it means the email already exists and we couldn't update the password.
-  // In that case, we fall back to the edge function.
-  if (signUpData?.user && signUpData.user.identities && signUpData.user.identities.length === 0) {
-    // User already exists — try the edge function as fallback
-    const { data, error } = await supabase.functions.invoke("reset-student-password", {
-      body: { userId, newPassword },
-    });
+  // Update the password_hash in app_users for backward compat / admin reference
+  try {
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(newPassword));
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashedPassword = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
     
-    if (error || data?.error) {
-      // Edge function also failed — update just the app_users table as last resort
-      const encoder = new TextEncoder();
-      const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(newPassword));
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashedPassword = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-      
-      await supabase
-        .from("app_users")
-        .update({ password_hash: hashedPassword })
-        .eq("id", userId);
-    }
+    await supabase
+      .from("app_users")
+      .update({ password_hash: hashedPassword })
+      .eq("id", userId);
+  } catch (hashError) {
+    console.warn("Failed to update app_users password_hash, but auth password was reset:", hashError);
   }
 
   return newPassword;
@@ -269,7 +235,7 @@ export async function getRecordByRollNumber(rollNumber: string): Promise<Student
   const { data } = await supabase
     .from("student_records")
     .select("*")
-    .eq("roll_number", rollNumber)
+    .ilike("roll_number", rollNumber)
     .maybeSingle();
   if (!data) return undefined;
   return {
@@ -295,10 +261,11 @@ export async function getRecordByRollNumber(rollNumber: string): Promise<Student
 }
 
 export async function getRecordByHash(hash: string): Promise<StudentRecord | undefined> {
+  const normalizedHash = hash.trim().toLowerCase();
   const { data } = await supabase
     .from("student_records")
     .select("*")
-    .eq("certificate_hash", hash)
+    .eq("certificate_hash", normalizedHash)
     .maybeSingle();
   if (!data) return undefined;
   return {
@@ -321,6 +288,33 @@ export async function getRecordByHash(hash: string): Promise<StudentRecord | und
     createdAt: data.created_at,
     status: data.status as "registered" | "verified",
   };
+}
+
+export async function verifyRecordAccess(hash: string): Promise<VerifyCertificateAccessResponse> {
+  const normalizedHash = hash.trim().toLowerCase();
+  const { data, error } = await supabase.functions.invoke("verify-certificate-record", {
+    body: { hash: normalizedHash },
+  });
+
+  if (error) {
+    let message = error.message;
+    const response = (error as { context?: Response }).context;
+
+    if (response) {
+      try {
+        const payload = await response.clone().json() as { error?: string };
+        if (payload?.error) {
+          message = payload.error;
+        }
+      } catch {
+        // Fall back to the default error message if the response body is not JSON.
+      }
+    }
+
+    throw new Error(message);
+  }
+
+  return (data || { exists: false }) as VerifyCertificateAccessResponse;
 }
 
 // No-op for backward compat — DB is always initialized

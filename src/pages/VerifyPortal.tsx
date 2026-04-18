@@ -1,14 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Upload, CheckCircle, XCircle, ArrowLeft, Hash, Blocks, User, Building, GraduationCap, Clock, Hexagon, ShieldAlert, Eye, ExternalLink, WifiOff, RefreshCw, FileText } from "lucide-react";
+import { Search, Upload, CheckCircle, ArrowLeft, Hash, Blocks, User, Building, GraduationCap, Clock, Hexagon, ShieldAlert, Eye, ExternalLink, WifiOff, RefreshCw, FileText } from "lucide-react";
 import jsQR from "jsqr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { verifyCertificate } from "@/lib/blockchain";
-import { getRecordByHash } from "@/lib/database";
-import { getSignedUrl } from "@/lib/storage";
-import { generateSHA512Hash } from "@/lib/crypto";
+import { verifyRecordAccess } from "@/lib/database";
 import { VerificationResult } from "@/lib/types";
 import { getEtherscanTxUrl, isContractConfigured } from "@/lib/ethereum";
 import ParticleField from "@/components/ParticleField";
@@ -31,72 +28,45 @@ const VerifyPortal = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const verify = useCallback(async (hash: string) => {
-    if (!hash.trim()) return;
+    const normalizedHash = hash.trim().toLowerCase();
+    if (!normalizedHash) return;
+
     setLoading(true);
     setNetworkError(false);
     setResult(null);
+
     try {
-      const blockchainResult = await verifyCertificate(hash.trim());
-      const dbRecord = await getRecordByHash(hash.trim());
+      const verification = await verifyRecordAccess(normalizedHash);
 
-      let photoUrl = "";
-      let certificateUrl = "";
-      
-      if (blockchainResult.exists && dbRecord) {
-        // Recompute the master hash from current Supabase data
-        const recomputed = await generateSHA512Hash({
-          studentName: dbRecord.studentName,
-          rollNumber: dbRecord.rollNumber,
-          department: dbRecord.department,
-          academicYear: dbRecord.academicYear,
-          dateOfJoining: dbRecord.dateOfJoining,
-          dateOfCompletion: dbRecord.dateOfCompletion,
-          totalMarks: dbRecord.totalMarks,
-          cgpa: dbRecord.cgpa,
-          certificateFileHash: dbRecord.certificateFileHash,
-          photoHash: dbRecord.photoHash,
+      if (verification.exists && verification.isTampered) {
+        setResult({
+          isValid: false,
+          isTampered: true,
+          tamperMessage: verification.tamperMessage,
         });
+        return;
+      }
 
-        if (recomputed !== hash.trim()) {
-          // Data was tampered after registration
-          setResult({
-            isValid: false,
-            isTampered: true,
-            tamperMessage:
-              "This record has been tampered with after registration. " +
-              "The data no longer matches the blockchain record.",
-          });
-          return;
-        }
-
-        // Hash matches — record is authentic
-        if (dbRecord.photoPath) {
-          photoUrl = await getSignedUrl("photos", dbRecord.photoPath, 900);
-        }
-        if (dbRecord.certificateFilePath) {
-          certificateUrl = await getSignedUrl("certificates", dbRecord.certificateFilePath, 900);
-        }
-
+      if (verification.exists && verification.record) {
         setResult({
           isValid: true,
-          studentName: dbRecord.studentName,
-          rollNumber: dbRecord.rollNumber,
-          department: dbRecord.department,
-          academicYear: dbRecord.academicYear,
-          totalMarks: dbRecord.totalMarks,
-          timestamp: blockchainResult.timestamp,
-          blockNumber: blockchainResult.blockNumber,
-          txHash: dbRecord.blockchainTxHash,
-          cgpa: dbRecord.cgpa,
-          photoUrl: photoUrl,
-          certificateUrl: certificateUrl,
+          studentName: verification.record.studentName,
+          rollNumber: verification.record.rollNumber,
+          department: verification.record.department,
+          academicYear: verification.record.academicYear,
+          totalMarks: verification.record.totalMarks,
+          timestamp: verification.timestamp,
+          blockNumber: verification.blockNumber,
+          txHash: verification.record.blockchainTxHash,
+          cgpa: verification.record.cgpa,
+          photoUrl: verification.record.photoUrl,
+          certificateUrl: verification.record.certificateUrl,
         });
-      } else if (blockchainResult.exists) {
-        // Hash exists on-chain but no DB record found
+      } else if (verification.exists) {
         setResult({
           isValid: true,
-          timestamp: blockchainResult.timestamp,
-          blockNumber: blockchainResult.blockNumber,
+          timestamp: verification.timestamp,
+          blockNumber: verification.blockNumber,
         });
       } else {
         setResult({ isValid: false });
