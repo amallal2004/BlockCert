@@ -60,6 +60,22 @@ export async function uploadPhoto(file: File, rollNumber: string): Promise<strin
 }
 
 /**
+ * Removes a file from a private Supabase storage bucket.
+ * Used for best-effort cleanup when a multi-step registration fails.
+ */
+export async function deleteStoredFile(bucket: string, path: string): Promise<void> {
+  if (!path) return;
+
+  const { error } = await supabase.storage
+    .from(bucket)
+    .remove([path]);
+
+  if (error) {
+    throw new Error(`Failed to delete ${bucket} file: ${error.message}`);
+  }
+}
+
+/**
  * Generates a signed URL for a file in a private bucket.
  * @param bucket The name of the bucket ("certificates" or "photos")
  * @param path The storage path of the file

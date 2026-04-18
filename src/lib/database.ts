@@ -1,4 +1,4 @@
-import { supabase, supabaseAdmin, supabaseService } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/client";
 import { StudentRecord, User, VerifyCertificateAccessResponse } from "./types";
 
 // --- Department Management ---
@@ -54,7 +54,7 @@ export async function getStudentUsers(): Promise<User[]> {
     .order("name");
   if (error) return [];
   return (data || []).map(d => ({
-    id: d.id,
+    id: d.supabase_user_id || d.id,
     username: d.username,
     role: "student" as const,
     name: d.name,
@@ -69,6 +69,69 @@ function generatePassword(length = 8): string {
   return pwd;
 }
 
+function normalizeStudentIdentity(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) throw new Error("Roll number is required");
+  return normalized;
+}
+
+function mapAppUserToUser(appUser: {
+  id: string;
+  supabase_user_id: string | null;
+  username: string;
+  role: string;
+  name: string;
+  roll_number: string | null;
+}): User {
+  return {
+    id: appUser.supabase_user_id || appUser.id,
+    username: appUser.username,
+    role: appUser.role as "admin" | "student",
+    name: appUser.name,
+    rollNumber: appUser.roll_number || undefined,
+  };
+}
+
+async function upsertStudentIndexRow(userId: string, name: string, rollNumber: string): Promise<void> {
+  const { error } = await supabase.from("app_users").upsert({
+    id: userId,
+    supabase_user_id: userId,
+    username: rollNumber,
+    password_hash: "managed_by_supabase_auth",
+    role: "student",
+    name,
+    roll_number: rollNumber,
+  }, { onConflict: "username" });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function invokeEdgeFunction<TResponse>(name: string, body: Record<string, unknown>): Promise<TResponse> {
+  const { data, error } = await supabase.functions.invoke(name, { body });
+
+  if (error) {
+    let message = error.message;
+    const response = (error as { context?: Response }).context;
+
+    if (response) {
+      try {
+        const payload = await response.clone().json() as { error?: string };
+        if (payload?.error) {
+          message = payload.error;
+        }
+      } catch {
+        // Fall back to the default error message if the response body is not JSON.
+      }
+    }
+
+    throw new Error(message);
+  }
+
+  return data as TResponse;
+}
+
 /**
  * Resets a student's password by using a secure Edge Function.
  * The Edge Function uses the Service Role key to bypass RLS and update auth.users.
@@ -77,22 +140,24 @@ export async function resetStudentPassword(userId: string): Promise<string> {
   const newPassword = generatePassword();
 
   // Look up the student's details from app_users
-  const { data: student } = await supabase
+  const { data: studentByAuthId } = await supabase
+    .from("app_users")
+    .select("*")
+    .eq("supabase_user_id", userId)
+    .maybeSingle();
+
+  const student = studentByAuthId || (await supabase
     .from("app_users")
     .select("*")
     .eq("id", userId)
-    .single();
+    .maybeSingle()).data;
 
   if (!student) throw new Error("Student not found");
 
-  // Use the service-role client directly since the Edge function environment is broken
-  const { data, error } = await supabaseService.auth.admin.updateUserById(userId, {
-    password: newPassword,
+  await invokeEdgeFunction<{ success: boolean }>("reset-student-password", {
+    userId,
+    newPassword,
   });
-  
-  if (error) {
-    throw new Error(`Failed to reset student password: ${error.message}`);
-  }
 
   // Update the password_hash in app_users for backward compat / admin reference
   try {
@@ -104,7 +169,7 @@ export async function resetStudentPassword(userId: string): Promise<string> {
     await supabase
       .from("app_users")
       .update({ password_hash: hashedPassword })
-      .eq("id", userId);
+      .eq("id", student.id);
   } catch (hashError) {
     console.warn("Failed to update app_users password_hash, but auth password was reset:", hashError);
   }
@@ -113,65 +178,55 @@ export async function resetStudentPassword(userId: string): Promise<string> {
 }
 
 /**
- * Creates a new student user via Supabase Auth.
- * Uses a separate non-persistent client so the admin's session is not affected.
+ * Creates or repairs a student auth user via the service-role admin API.
  */
-export async function addStudentUser(name: string, rollNumber: string): Promise<User> {
-  const email = `${rollNumber.toLowerCase()}@blockcert.edu`;
+export async function addStudentUser(
+  name: string,
+  rollNumber: string
+): Promise<{ user: User; wasCreated: boolean }> {
+  const normalizedRollNumber = normalizeStudentIdentity(rollNumber);
+  const normalizedName = name.trim();
+  const email = `${normalizedRollNumber}@blockcert.edu`;
 
   // First check if user already exists in our app_users table
   const { data: existing } = await supabase
     .from("app_users")
     .select("*")
-    .eq("username", rollNumber.toLowerCase())
+    .eq("username", normalizedRollNumber)
     .maybeSingle();
 
   if (existing) {
-    return {
-      id: existing.id,
-      username: existing.username,
-      role: existing.role as "admin" | "student",
-      name: existing.name,
-      rollNumber: existing.roll_number || undefined,
-    };
+    return { user: mapAppUserToUser(existing), wasCreated: false };
   }
 
-  const defaultPassword = rollNumber.toLowerCase();
-
-  // Sign up via a non-persistent client (won't overwrite admin's session)
-  const { data, error } = await supabaseAdmin.auth.signUp({
+  const defaultPassword = normalizedRollNumber;
+  const data = await invokeEdgeFunction<{ id?: string; user?: { id: string }; wasCreated?: boolean }>("create-student-user", {
     email,
     password: defaultPassword,
-    options: {
-      data: {
-        name,
-        role: "student",
-        roll_number: rollNumber,
-      },
-    },
+    name: normalizedName,
+    rollNumber: normalizedRollNumber,
+    role: "student",
   });
 
-  if (error) throw new Error("Failed to create student: " + error.message);
-  if (!data.user) throw new Error("Failed to create student: no user returned");
+  const userId = data.user?.id || data.id;
+  if (!userId) throw new Error("Failed to create student: no user returned");
 
-  const userId = data.user.id;
-
-  // Also insert into app_users table for admin reference
-  await supabase.from("app_users").upsert({
-    id: userId,
-    username: rollNumber.toLowerCase(),
-    password_hash: "managed_by_supabase_auth",
-    role: "student",
-    name,
-    roll_number: rollNumber,
-  }, { onConflict: "username" });
+  try {
+    await upsertStudentIndexRow(userId, normalizedName, normalizedRollNumber);
+  } catch (indexError) {
+    await invokeEdgeFunction<{ success: boolean }>("delete-student-user", { userId });
+    throw new Error("Failed to create student: " + (indexError instanceof Error ? indexError.message : "Failed to save student index"));
+  }
 
   return {
-    id: userId,
-    username: rollNumber.toLowerCase(),
-    role: "student",
-    name,
-    rollNumber,
+    user: {
+      id: userId,
+      username: normalizedRollNumber,
+      role: "student",
+      name: normalizedName,
+      rollNumber: normalizedRollNumber,
+    },
+    wasCreated: Boolean(data.wasCreated),
   };
 }
 
@@ -205,9 +260,10 @@ export async function getRecords(): Promise<StudentRecord[]> {
   }));
 }
 
-export async function addRecord(record: StudentRecord): Promise<void> {
+export async function addRecord(record: StudentRecord, ownerId: string): Promise<void> {
   const { error } = await supabase.from("student_records").insert({
     id: record.id,
+    supabase_user_id: ownerId,
     student_name: record.studentName,
     roll_number: record.rollNumber,
     department: record.department,
@@ -231,11 +287,75 @@ export async function addRecord(record: StudentRecord): Promise<void> {
   }
 }
 
+export async function updateRecordBlockchainDetails(
+  recordId: string,
+  blockchainTxHash: string,
+  qrCodeData: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("student_records")
+    .update({
+      blockchain_tx_hash: blockchainTxHash,
+      qr_code_data: qrCodeData,
+      status: "registered",
+    })
+    .eq("id", recordId);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteRecord(recordId: string): Promise<void> {
+  const { error } = await supabase
+    .from("student_records")
+    .delete()
+    .eq("id", recordId);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteStudentUser(userId: string): Promise<void> {
+  await invokeEdgeFunction<{ success: boolean }>("delete-student-user", { userId });
+
+  await supabase
+    .from("app_users")
+    .delete()
+    .or(`id.eq.${userId},supabase_user_id.eq.${userId}`);
+}
+
 export async function getRecordByRollNumber(rollNumber: string): Promise<StudentRecord | undefined> {
   const { data } = await supabase
     .from("student_records")
     .select("*")
     .ilike("roll_number", rollNumber)
+    .maybeSingle();
+  if (!data) return undefined;
+  return {
+    id: data.id,
+    studentName: data.student_name,
+    rollNumber: data.roll_number,
+    department: data.department,
+    academicYear: data.academic_year,
+    dateOfJoining: data.date_of_joining,
+    dateOfCompletion: data.date_of_completion,
+    totalMarks: data.total_marks,
+    cgpa: data.cgpa || undefined,
+    certificateFilePath: data.certificate_file_path || undefined,
+    photoPath: data.photo_path || undefined,
+    certificateFileHash: data.certificate_file_hash || undefined,
+    photoHash: data.photo_hash || undefined,
+    certificateHash: data.certificate_hash,
+    blockchainTxHash: data.blockchain_tx_hash,
+    qrCodeData: data.qr_code_data,
+    createdAt: data.created_at,
+    status: data.status as "registered" | "verified",
+  };
+}
+
+export async function getRecordForUser(userId: string): Promise<StudentRecord | undefined> {
+  const { data } = await supabase
+    .from("student_records")
+    .select("*")
+    .eq("supabase_user_id", userId)
     .maybeSingle();
   if (!data) return undefined;
   return {

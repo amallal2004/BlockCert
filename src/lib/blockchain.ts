@@ -1,4 +1,10 @@
-import { registerCertificateOnChain, verifyCertificateOnChain, getOnChainStats, isMetaMaskInstalled } from "./ethereum";
+import {
+  getExistingCertificateRegistration,
+  getOnChainStats,
+  isMetaMaskInstalled,
+  registerCertificateOnChain,
+  verifyCertificateOnChain,
+} from "./ethereum";
 
 /**
  * Privacy-preserving blockchain layer.
@@ -35,6 +41,23 @@ export async function verifyCertificate(hash: string): Promise<{
     exists: true,
     timestamp: (onChain.timestamp || 0) * 1000,
     blockNumber: onChain.blockNumber || 0,
+  };
+}
+
+export async function getCertificateRegistration(hash: string): Promise<{
+  exists: boolean;
+  timestamp?: number;
+  blockNumber?: number;
+  txHash?: string;
+}> {
+  const onChain = await getExistingCertificateRegistration(hash);
+  if (!onChain.exists) return { exists: false };
+
+  return {
+    exists: true,
+    timestamp: (onChain.timestamp || 0) * 1000,
+    blockNumber: onChain.blockNumber || 0,
+    txHash: onChain.txHash,
   };
 }
 

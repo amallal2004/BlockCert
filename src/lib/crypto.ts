@@ -1,4 +1,11 @@
-const UNIVERSITY_SECRET_SALT = "UNIV_BLOCKCHAIN_CERT_SALT_2024_SECURE";
+import { supabase } from "@/integrations/supabase/client";
+
+function normalizeNumericValue(value: number | string | undefined): string {
+  if (value === undefined || value === "") return "";
+
+  const numericValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numericValue) ? numericValue.toString() : String(value).trim();
+}
 
 export async function generateSHA512Hash(data: {
   studentName: string;
@@ -7,29 +14,44 @@ export async function generateSHA512Hash(data: {
   academicYear: string;
   dateOfJoining: string;
   dateOfCompletion: string;
-  totalMarks: number;
-  cgpa?: number;
+  totalMarks: number | string;
+  cgpa?: number | string;
   certificateFileHash?: string;
   photoHash?: string;
 }): Promise<string> {
-  const salt = import.meta.env.VITE_UNIVERSITY_SALT || UNIVERSITY_SECRET_SALT;
-  
-  // Standardised order: studentName | rollNumber | department | academicYear | 
-  // dateOfJoining | dateOfCompletion | totalMarks | cgpa | 
-  // certificateFileHash | photoHash | UNIVERSITY_SECRET_SALT
-  
-  // Normalize optional values to string for concatenation
-  const cgpaStr = data.cgpa !== undefined ? data.cgpa.toString() : "";
-  const certHash = data.certificateFileHash || "";
-  const photoHash = data.photoHash || "";
+  const { data: response, error } = await supabase.functions.invoke("generate-certificate-hash", {
+    body: {
+      ...data,
+      totalMarks: normalizeNumericValue(data.totalMarks),
+      cgpa: normalizeNumericValue(data.cgpa),
+      certificateFileHash: data.certificateFileHash || "",
+      photoHash: data.photoHash || "",
+    },
+  });
 
-  const raw = `${data.studentName}|${data.rollNumber}|${data.department}|${data.academicYear}|${data.dateOfJoining}|${data.dateOfCompletion}|${data.totalMarks}|${cgpaStr}|${certHash}|${photoHash}|${salt}`;
-  
-  const encoder = new TextEncoder();
-  const dataBuffer = encoder.encode(raw);
-  const hashBuffer = await crypto.subtle.digest("SHA-512", dataBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  if (error) {
+    let message = error.message;
+    const response = (error as { context?: Response }).context;
+
+    if (response) {
+      try {
+        const payload = await response.clone().json() as { error?: string };
+        if (payload?.error) {
+          message = payload.error;
+        }
+      } catch {
+        // Fall back to the default error message if the response body is not JSON.
+      }
+    }
+
+    throw new Error(message);
+  }
+
+  if (!response?.hash) {
+    throw new Error("Hash generation failed");
+  }
+
+  return response.hash;
 }
 
 /**

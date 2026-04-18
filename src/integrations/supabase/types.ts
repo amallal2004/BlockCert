@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.4"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -22,6 +22,7 @@ export type Database = {
           password_hash: string
           role: string
           roll_number: string | null
+          supabase_user_id: string | null
           username: string
         }
         Insert: {
@@ -31,6 +32,7 @@ export type Database = {
           password_hash: string
           role?: string
           roll_number?: string | null
+          supabase_user_id?: string | null
           username: string
         }
         Update: {
@@ -40,6 +42,7 @@ export type Database = {
           password_hash?: string
           role?: string
           roll_number?: string | null
+          supabase_user_id?: string | null
           username?: string
         }
         Relationships: []
@@ -81,6 +84,7 @@ export type Database = {
           roll_number: string
           status: string
           student_name: string
+          supabase_user_id: string
           total_marks: number
         }
         Insert: {
@@ -101,6 +105,7 @@ export type Database = {
           roll_number: string
           status?: string
           student_name: string
+          supabase_user_id: string
           total_marks: number
         }
         Update: {
@@ -121,6 +126,7 @@ export type Database = {
           roll_number?: string
           status?: string
           student_name?: string
+          supabase_user_id?: string
           total_marks?: number
         }
         Relationships: []
@@ -156,7 +162,8 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      current_app_role: { Args: never; Returns: string }
+      is_admin: { Args: never; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
