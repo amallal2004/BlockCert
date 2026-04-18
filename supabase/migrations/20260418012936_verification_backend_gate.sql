@@ -10,32 +10,13 @@ CREATE POLICY "Admins can read all student records"
   ON public.student_records
   FOR SELECT
   TO authenticated
-  USING (
-    COALESCE(
-      LOWER(auth.jwt() -> 'user_metadata' ->> 'role'),
-      LOWER(auth.jwt() -> 'app_metadata' ->> 'role'),
-      ''
-    ) = 'admin'
-  );
+  USING (public.is_admin());
 
 CREATE POLICY "Students can read own student record"
   ON public.student_records
   FOR SELECT
   TO authenticated
-  USING (
-    COALESCE(
-      LOWER(auth.jwt() -> 'user_metadata' ->> 'role'),
-      LOWER(auth.jwt() -> 'app_metadata' ->> 'role'),
-      ''
-    ) = 'student'
-    AND LOWER(roll_number) = LOWER(
-      COALESCE(
-        auth.jwt() -> 'user_metadata' ->> 'roll_number',
-        auth.jwt() -> 'app_metadata' ->> 'roll_number',
-        ''
-      )
-    )
-  );
+  USING (supabase_user_id = auth.uid());
 
 -- Remove anonymous storage reads. Verifier URLs are now minted server-side
 -- only after the backend re-checks the blockchain result.
@@ -51,17 +32,12 @@ CREATE POLICY "certificates_select_authenticated"
   USING (
     bucket_id = 'certificates'
     AND (
-      COALESCE(
-        LOWER(auth.jwt() -> 'user_metadata' ->> 'role'),
-        LOWER(auth.jwt() -> 'app_metadata' ->> 'role'),
-        ''
-      ) = 'admin'
-      OR LOWER((storage.foldername(name))[1]) = LOWER(
-        COALESCE(
-          auth.jwt() -> 'user_metadata' ->> 'roll_number',
-          auth.jwt() -> 'app_metadata' ->> 'roll_number',
-          ''
-        )
+      public.is_admin()
+      OR EXISTS (
+        SELECT 1
+        FROM public.student_records
+        WHERE certificate_file_path = name
+          AND supabase_user_id = auth.uid()
       )
     )
   );
@@ -73,17 +49,12 @@ CREATE POLICY "photos_select_authenticated"
   USING (
     bucket_id = 'photos'
     AND (
-      COALESCE(
-        LOWER(auth.jwt() -> 'user_metadata' ->> 'role'),
-        LOWER(auth.jwt() -> 'app_metadata' ->> 'role'),
-        ''
-      ) = 'admin'
-      OR LOWER((storage.foldername(name))[1]) = LOWER(
-        COALESCE(
-          auth.jwt() -> 'user_metadata' ->> 'roll_number',
-          auth.jwt() -> 'app_metadata' ->> 'roll_number',
-          ''
-        )
+      public.is_admin()
+      OR EXISTS (
+        SELECT 1
+        FROM public.student_records
+        WHERE photo_path = name
+          AND supabase_user_id = auth.uid()
       )
     )
   );

@@ -1,7 +1,6 @@
 /// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { Contract, JsonRpcProvider } from "https://esm.sh/ethers@6.13.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,8 +8,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const CONTRACT_ADDRESS = "0xe5a4063430c194CAe363C0f5554d3B7028609EDd";
-const UNIVERSITY_SECRET_SALT = "UNIV_BLOCKCHAIN_CERT_SALT_2024_SECURE";
+const CONTRACT_ADDRESS = "0x25e634c395475C272e5A75581640AA0625c46971";
 const SIGNED_URL_TTL_SECONDS = 900;
 const HASH_PATTERN = /^(?:[a-f0-9]{64}|[a-f0-9]{128})$/;
 const SEPOLIA_RPCS = [
@@ -19,9 +17,7 @@ const SEPOLIA_RPCS = [
   "https://sepolia.drpc.org",
   "https://rpc2.sepolia.org",
 ];
-const CONTRACT_ABI = [
-  "function verifyCertificate(bytes32 _hash) external view returns (bool exists, uint256 timestamp, uint256 blockNum)",
-];
+const VERIFY_CERTIFICATE_SELECTOR = "0x850c1768";
 
 type StudentRecordRow = {
   student_name: string;
@@ -30,8 +26,8 @@ type StudentRecordRow = {
   academic_year: string;
   date_of_joining: string;
   date_of_completion: string;
-  total_marks: number;
-  cgpa: number | null;
+  total_marks: number | string;
+  cgpa: number | string | null;
   certificate_file_path: string | null;
   photo_path: string | null;
   certificate_file_hash: string | null;
@@ -57,28 +53,76 @@ function toBytes32Hash(hash: string): string {
   return hash.length === 128 ? `0x${hash.substring(0, 64)}` : `0x${hash}`;
 }
 
-async function getReadProvider(): Promise<JsonRpcProvider> {
-  for (const rpcUrl of SEPOLIA_RPCS) {
-    try {
-      const provider = new JsonRpcProvider(rpcUrl);
-      await provider.getBlockNumber();
-      return provider;
-    } catch (_error) {
-      continue;
-    }
+function normalizeNumericValue(value: number | string | null | undefined): string {
+  if (value === undefined || value === null || value === "") {
+    return "";
   }
 
-  throw new Error("NETWORK_ERROR: All Sepolia RPC endpoints failed. Please try again later.");
+  const numericValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numericValue) ? numericValue.toString() : String(value).trim();
 }
 
-async function verifyCertificateOnChain(hash: string): Promise<{
+function toNumber(value: number | string | null | undefined): number | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const numericValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numericValue) ? numericValue : undefined;
+}
+
+async function callRpc<T>(rpcUrl: string, method: string, params: unknown[]): Promise<T> {
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`RPC_HTTP_${response.status}`);
+  }
+
+  const payload = await response.json() as {
+    result?: T;
+    error?: { message?: string };
+  };
+
+  if (payload.error) {
+    throw new Error(payload.error.message || "Unknown RPC error");
+  }
+
+  if (payload.result === undefined) {
+    throw new Error("RPC returned no result");
+  }
+
+  return payload.result;
+}
+
+function parseHexToBigInt(value: string): bigint {
+  return BigInt(`0x${value}`);
+}
+
+function decodeVerifyCertificateResult(result: string): {
   exists: boolean;
   timestamp?: number;
   blockNumber?: number;
-}> {
-  const provider = await getReadProvider();
-  const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
-  const [exists, timestamp, blockNumber] = await contract.verifyCertificate(toBytes32Hash(hash));
+} {
+  const hex = result.startsWith("0x") ? result.slice(2) : result;
+  if (hex.length < 64 * 3) {
+    throw new Error("Malformed verifyCertificate response");
+  }
+
+  const existsWord = hex.slice(0, 64);
+  const timestampWord = hex.slice(64, 128);
+  const blockWord = hex.slice(128, 192);
+  const exists = parseHexToBigInt(existsWord) === 1n;
 
   if (!exists) {
     return { exists: false };
@@ -86,9 +130,38 @@ async function verifyCertificateOnChain(hash: string): Promise<{
 
   return {
     exists: true,
-    timestamp: Number(timestamp) * 1000,
-    blockNumber: Number(blockNumber),
+    timestamp: Number(parseHexToBigInt(timestampWord)) * 1000,
+    blockNumber: Number(parseHexToBigInt(blockWord)),
   };
+}
+
+async function verifyCertificateOnChain(hash: string): Promise<{
+  exists: boolean;
+  timestamp?: number;
+  blockNumber?: number;
+}> {
+  const calldata = `${VERIFY_CERTIFICATE_SELECTOR}${toBytes32Hash(hash).slice(2)}`;
+
+  for (const rpcUrl of SEPOLIA_RPCS) {
+    try {
+      await callRpc<string>(rpcUrl, "eth_blockNumber", []);
+      const result = await callRpc<string>(rpcUrl, "eth_call", [
+        {
+          to: CONTRACT_ADDRESS,
+          data: calldata,
+        },
+        "latest",
+      ]);
+
+      return decodeVerifyCertificateResult(result);
+    } catch (_error) {
+      continue;
+    }
+  }
+
+  throw new Error(
+    "NETWORK_ERROR: All Sepolia RPC endpoints failed. Please try again later.",
+  );
 }
 
 async function generateSHA512Hash(data: {
@@ -98,16 +171,20 @@ async function generateSHA512Hash(data: {
   academicYear: string;
   dateOfJoining: string;
   dateOfCompletion: string;
-  totalMarks: number;
-  cgpa?: number;
+  totalMarks: number | string;
+  cgpa?: number | string;
   certificateFileHash?: string;
   photoHash?: string;
 }): Promise<string> {
-  const salt = Deno.env.get("UNIVERSITY_SALT") || UNIVERSITY_SECRET_SALT;
-  const cgpa = data.cgpa !== undefined ? data.cgpa.toString() : "";
+  const salt = Deno.env.get("UNIVERSITY_SALT");
+  if (!salt) {
+    throw new Error("UNIVERSITY_SALT is not configured");
+  }
+  const totalMarks = normalizeNumericValue(data.totalMarks);
+  const cgpa = normalizeNumericValue(data.cgpa);
   const certificateFileHash = data.certificateFileHash || "";
   const photoHash = data.photoHash || "";
-  const raw = `${data.studentName}|${data.rollNumber}|${data.department}|${data.academicYear}|${data.dateOfJoining}|${data.dateOfCompletion}|${data.totalMarks}|${cgpa}|${certificateFileHash}|${photoHash}|${salt}`;
+  const raw = `${data.studentName}|${data.rollNumber}|${data.department}|${data.academicYear}|${data.dateOfJoining}|${data.dateOfCompletion}|${totalMarks}|${cgpa}|${certificateFileHash}|${photoHash}|${salt}`;
 
   const encoded = new TextEncoder().encode(raw);
   const hashBuffer = await crypto.subtle.digest("SHA-512", encoded);
@@ -130,7 +207,9 @@ async function createSignedUrl(
     .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
 
   if (error) {
-    console.warn(`Failed to create ${bucket} signed URL for ${path}: ${error.message}`);
+    console.warn(
+      `Failed to create ${bucket} signed URL for ${path}: ${error.message}`,
+    );
     return undefined;
   }
 
@@ -166,7 +245,8 @@ Deno.serve(async (req) => {
 
     const { data, error } = await supabaseAdmin
       .from("student_records")
-      .select(`
+      .select(
+        `
         student_name,
         roll_number,
         department,
@@ -180,7 +260,8 @@ Deno.serve(async (req) => {
         certificate_file_hash,
         photo_hash,
         blockchain_tx_hash
-      `)
+      `,
+      )
       .eq("certificate_hash", normalizedHash)
       .maybeSingle();
 
@@ -217,7 +298,11 @@ Deno.serve(async (req) => {
     }
 
     const [certificateUrl, photoUrl] = await Promise.all([
-      createSignedUrl(supabaseAdmin, "certificates", record.certificate_file_path),
+      createSignedUrl(
+        supabaseAdmin,
+        "certificates",
+        record.certificate_file_path,
+      ),
       createSignedUrl(supabaseAdmin, "photos", record.photo_path),
     ]);
 
@@ -228,8 +313,8 @@ Deno.serve(async (req) => {
         rollNumber: record.roll_number,
         department: record.department,
         academicYear: record.academic_year,
-        totalMarks: record.total_marks,
-        cgpa: record.cgpa ?? undefined,
+        totalMarks: toNumber(record.total_marks),
+        cgpa: toNumber(record.cgpa),
         blockchainTxHash: record.blockchain_tx_hash,
         photoUrl,
         certificateUrl,

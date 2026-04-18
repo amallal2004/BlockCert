@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
 
     if (existingUser) {
       return new Response(
-        JSON.stringify({ id: existingUser.id, user: existingUser }),
+        JSON.stringify({ id: existingUser.id, user: existingUser, wasCreated: false }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ id: data.user.id, user: data.user }), {
+    return new Response(JSON.stringify({ id: data.user.id, user: data.user, wasCreated: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err: unknown) {

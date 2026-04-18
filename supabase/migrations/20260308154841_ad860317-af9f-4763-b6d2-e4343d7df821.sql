@@ -20,6 +20,7 @@ INSERT INTO public.departments (name) VALUES
 -- Student records table (certificates)
 CREATE TABLE public.student_records (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  supabase_user_id UUID REFERENCES auth.users(id),
   student_name TEXT NOT NULL,
   roll_number TEXT NOT NULL UNIQUE,
   department TEXT NOT NULL,
@@ -47,6 +48,7 @@ CREATE POLICY "Anyone can insert student records"
 -- App users table (admin & student accounts with credentials)
 CREATE TABLE public.app_users (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  supabase_user_id UUID REFERENCES auth.users(id),
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'student' CHECK (role IN ('admin', 'student')),
