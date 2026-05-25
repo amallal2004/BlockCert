@@ -8,7 +8,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const CONTRACT_ADDRESS = "0x25e634c395475C272e5A75581640AA0625c46971";
+const CONTRACT_ADDRESS = "0xE1768F9F6995f5694B371691B210f7e228B271c9";
 const SIGNED_URL_TTL_SECONDS = 900;
 const HASH_PATTERN = /^(?:[a-f0-9]{64}|[a-f0-9]{128})$/;
 const SEPOLIA_RPCS = [
