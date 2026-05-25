@@ -25,10 +25,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Map a Supabase auth user to our app User type
   const mapSupabaseUser = (authUser: any): User => {
     const meta = authUser.user_metadata || {};
+    const email = authUser.email || "";
+    const isSystemAdminEmail = ["admin@blockcert.edu", "admin@admin.com"].includes(email.toLowerCase().trim());
     return {
       id: authUser.id,
       username: authUser.email?.split("@")[0] || "",
-      role: (meta.role as "admin" | "student") || "student",
+      role: isSystemAdminEmail ? "admin" : ((meta.role as "admin" | "student") || "student"),
       name: meta.name || authUser.email?.split("@")[0] || "",
       rollNumber: meta.roll_number || undefined,
     };
@@ -59,18 +61,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (username: string, password: string): Promise<boolean> => {
-    // Support both "username" and "username@blockcert.edu" formats
-    const email = username.includes("@") ? username : `${username.toLowerCase()}@blockcert.edu`;
+    const isNormalizedAdmin = ["admin", "admin@admin.com", "admin@blockcert.edu"].includes(username.toLowerCase().trim());
+    
+    let emailsToTry: string[] = [];
+    if (isNormalizedAdmin) {
+      emailsToTry = [
+        "admin@blockcert.edu",
+        "admin@admin.com",
+        username.includes("@") ? username : ""
+      ].filter(Boolean);
+    } else {
+      emailsToTry = [username.includes("@") ? username : `${username.toLowerCase()}@blockcert.edu`];
+    }
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    // Try each email variant
+    for (const email of emailsToTry) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-    if (error || !data.user) return false;
+        if (!error && data.user) {
+          setUser(mapSupabaseUser(data.user));
+          return true;
+        }
+      } catch (e) {
+        console.error("Login attempt failed for email:", email, e);
+      }
+    }
 
-    setUser(mapSupabaseUser(data.user));
-    return true;
+    return false;
   };
 
   const logout = async () => {

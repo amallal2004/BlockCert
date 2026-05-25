@@ -15,6 +15,7 @@ const StudentManager = ({ onBack }: Props) => {
   const [students, setStudents] = useState<User[]>([]);
   const [resetPasswords, setResetPasswords] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState<Record<string, boolean>>({});
+  const [resetting, setResetting] = useState<Record<string, boolean>>({});
   const [searchTerm, setSearchTerm] = useState("");
 
   const loadStudents = async () => {
@@ -25,6 +26,8 @@ const StudentManager = ({ onBack }: Props) => {
   useEffect(() => { loadStudents(); }, []);
 
   const handleReset = async (userId: string) => {
+    if (resetting[userId]) return;
+    setResetting(prev => ({ ...prev, [userId]: true }));
     try {
       const newPwd = await resetStudentPassword(userId);
       await loadStudents();
@@ -32,6 +35,8 @@ const StudentManager = ({ onBack }: Props) => {
       toast({ title: "✅ Password Reset", description: "Copy the new password below and share it with the student." });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setResetting(prev => ({ ...prev, [userId]: false }));
     }
   };
 
@@ -123,9 +128,11 @@ const StudentManager = ({ onBack }: Props) => {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleReset(student.id)}
-                          className="text-neon-cyan hover:text-neon-cyan/80 font-display text-xs tracking-wider"
+                          disabled={resetting[student.id]}
+                          className="text-neon-cyan hover:text-neon-cyan/80 font-display text-xs tracking-wider disabled:opacity-50"
                         >
-                          <RotateCcw className="mr-1 h-3 w-3" /> RESET PASSWORD
+                          <RotateCcw className={`mr-1 h-3 w-3 ${resetting[student.id] ? "animate-spin" : ""}`} />{" "}
+                          {resetting[student.id] ? "RESETTING..." : "RESET PASSWORD"}
                         </Button>
                       </div>
 
