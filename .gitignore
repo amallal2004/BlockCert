@@ -24,3 +24,10 @@ dist-ssr
 *.sw?
 .env
 .temp
+
+# Documentation & Reports
+*.docx
+*.pdf
+Phase_2_report.txt
+prd.txt
+
